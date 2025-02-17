@@ -5,7 +5,7 @@ from ..util.compat import json
 from ..writer import write_binary_uint8
 
 
-class JsonColumn(Column):
+class NewJsonColumn(Column):
     py_types = (dict, )
 
     # No NULL value actually
@@ -14,7 +14,7 @@ class JsonColumn(Column):
     def __init__(self, column_by_spec_getter, **kwargs):
         self.column_by_spec_getter = column_by_spec_getter
         self.string_column = String(**kwargs)
-        super(JsonColumn, self).__init__(**kwargs)
+        super(NewJsonColumn, self).__init__(**kwargs)
 
     def write_state_prefix(self, buf):
         # Read in binary format.
@@ -33,5 +33,5 @@ class JsonColumn(Column):
         self.string_column.write_items(items, buf)
 
 
-def create_json_column(spec, column_by_spec_getter, column_options):
-    return JsonColumn(column_by_spec_getter, **column_options)
+def create_newjson_column(spec, column_by_spec_getter, column_options):
+    return NewJsonColumn(column_by_spec_getter, **column_options)
