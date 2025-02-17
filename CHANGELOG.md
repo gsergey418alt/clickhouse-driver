@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add support for new JSON data type, Solves issue [#473](https://github.com/mymarilyn/clickhouse-driver/issues/473) and [#460](https://github.com/mymarilyn/clickhouse-driver/issues/460).
+
 ## [0.2.9] - 2024-08-16
 ### Added
 - Debug logging on columns read/write. Solves issue [#404](https://github.com/mymarilyn/clickhouse-driver/issues/404).
