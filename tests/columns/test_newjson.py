@@ -3,21 +3,21 @@ import json
 from tests.testcase import BaseTestCase
 
 
-class JSONTestCase(BaseTestCase):
+class NewJSONTestCase(BaseTestCase):
     required_server_version = (22, 3, 2)
 
     def client_kwargs(self, version):
-        return {'settings': {'allow_experimental_object_type': True}}
+        return {'settings': {'enable_json_type': True}}
 
     def cli_client_kwargs(self):
-        return {'allow_experimental_object_type': 1}
+        return {'enable_json_type': 1}
 
     def test_simple(self):
         rv = self.client.execute("SELECT '{\"bb\": {\"cc\": [255, 1]}}'::JSON")
         self.assertEqual(rv, [({'bb': {'cc': [255, 1]}},)])
 
     def test_from_table(self):
-        with self.create_table('a Object(\'json\')'):
+        with self.create_table('a JSON'):
             data = [
                 ({},),
                 ({'key1': 1}, ),
@@ -46,7 +46,7 @@ class JSONTestCase(BaseTestCase):
             self.assertEqual(inserted, data_with_all_keys)
 
     def test_insert_json_strings(self):
-        with self.create_table('a Object(\'json\')'):
+        with self.create_table('a JSON'):
             data = [
                 (json.dumps({'i-am': 'dumped json'}),),
             ]
@@ -67,7 +67,7 @@ class JSONTestCase(BaseTestCase):
         settings = {'namedtuple_as_json': False}
         query = 'SELECT * FROM test'
 
-        with self.create_table('a Object(\'json\')'):
+        with self.create_table('a JSON'):
             data = [
                 ({'key': 'value'}, ),
             ]
