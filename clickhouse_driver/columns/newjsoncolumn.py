@@ -1,6 +1,6 @@
 from .base import Column
 from .stringcolumn import String
-from ..reader import read_binary_uint8, read_binary_str
+from ..reader import read_binary_uint8, read_binary_bytes_fixed_len, read_binary_str
 from ..util.compat import json
 from ..writer import write_binary_uint8
 
@@ -22,10 +22,33 @@ class NewJsonColumn(Column):
         write_binary_uint8(2, buf)
 
     def read_items(self, n_items, buf):
-        pass
+        # Skip padding.
+        read_binary_bytes_fixed_len(buf, 9)
+
+        # Read JSON paths.
+        paths_count = read_binary_uint8(buf)
+        paths = {}
+        for i in range(paths_count):
+            paths[read_binary_str(buf)] = None
+
+        # Read value specs.        
+        read_binary_uint8(buf)
+        for i in paths:
+            read_binary_bytes_fixed_len(buf, 9)
+            paths[i] = read_binary_str(buf)
+            read_binary_bytes_fixed_len(buf, 9)
+
+        # Read values.
+        for path, spec in paths.items():
+            col = self.column_by_spec_getter(spec)
+            paths[path] = col.read_items(1, buf)[0]
+        
+        read_binary_bytes_fixed_len(buf, 8)
+
+        result = {json.dumps(paths)}
+        return result
 
     def write_items(self, items, buf):
-
         # Convert all items to dictionaries.
         items = [x if not isinstance(x, str) else json.loads(x) for x in items]
 
@@ -51,7 +74,7 @@ class NewJsonColumn(Column):
             col = self.column_by_spec_getter(spec)
             col.write_items([val], buf)
             buf.write(b"\x00")
-        buf.write(b"\x01" + b"\x00" * 6)
+        buf.write(b"\x00" * 7)
 
     def _get_json_value_spec(self, val):
         if isinstance(val, int):
