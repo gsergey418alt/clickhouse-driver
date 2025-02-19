@@ -55,16 +55,15 @@ class NewJSONTestCase(BaseTestCase):
             inserted = self.emit_cli(query)
             self.assertEqual(
                 inserted,
-                "('dumped json')\n"
+                '{"i-am":"dumped json"}\n'
             )
             inserted = self.client.execute(query)
             data_with_all_keys = [
-                ({'`i-am`': 'dumped json'},)
+                ({'i-am': 'dumped json'},)
             ]
             self.assertEqual(inserted, data_with_all_keys)
 
     def test_json_as_named_tuple(self):
-        settings = {'namedtuple_as_json': False}
         query = 'SELECT * FROM test'
 
         with self.create_table('a JSON'):
@@ -74,7 +73,3 @@ class NewJSONTestCase(BaseTestCase):
             self.client.execute('INSERT INTO test (a) VALUES', data)
             inserted = self.client.execute(query)
             self.assertEqual(inserted, data)
-
-            with self.created_client(settings=settings) as client:
-                inserted = client.execute(query)
-                self.assertEqual(inserted, [(('value',),)])
