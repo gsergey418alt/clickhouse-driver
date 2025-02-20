@@ -83,7 +83,7 @@ class NewJsonColumn(Column):
         buf.write(b"\x00" * 8)
 
     def _get_json_value_spec(self, val):
-        if isinstance(val, int):
+        if isinstance(val, int) and not isinstance(val, bool):
             return "Int64"
         elif isinstance(val, float):
             return "Float64"
