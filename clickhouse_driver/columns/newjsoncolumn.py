@@ -99,11 +99,12 @@ class NewJsonColumn(Column):
         result = [255] * row_count
         count = 0
         for spec in col:
-            if count == len(col) - 1:
-                count += 1
             for pos in col[spec]["positions"]:
                 result[pos] = count
-            count += 1
+            if count == len(col) - 1:
+                count += 2
+            else:
+                count += 1
         return bytes(result)
 
     def _serialize_json_item(self, obj, result={}, row_count=0):
