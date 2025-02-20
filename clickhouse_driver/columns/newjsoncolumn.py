@@ -57,6 +57,7 @@ class NewJsonColumn(Column):
 
         # Convert items into desired format and write them.
         paths = self._serialize_json(items)
+        print(paths)
         write_binary_uint8(len(paths), buf)
         self.string_column.write_items(paths.keys(), buf)
 
@@ -75,7 +76,15 @@ class NewJsonColumn(Column):
                     for item in jcol[spec]["values"]:
                         write_binary_uint64(len(item), buf)
                         buf.write(b"\x00" * 2)
-                        self.string_column.write_items(item, buf)
+                        insert = []
+                        for elem in item:
+                            if isinstance(elem, str):
+                                insert.append(elem)
+                            elif isinstance(elem, bool):
+                                insert.append(str(elem).lower())
+                            else:
+                                insert.append(str(elem))
+                        self.string_column.write_items(insert, buf)
                 else:
                     col = self.column_by_spec_getter(spec)
                     col.write_items(jcol[spec]["values"], buf)
@@ -106,24 +115,32 @@ class NewJsonColumn(Column):
             else:
                 count += 1
         return bytes(result)
-
-    def _serialize_json_item(self, obj, result={}, row_count=0):
+    
+    def _serialize_nested_json_item(self, obj,):
         if isinstance(obj, dict):
+            result = {}
             for k in obj:
-                obj_res = self._serialize_json_item(obj[k])
+                obj_res = self._serialize_nested_json_item(obj[k])
                 for obj_k in obj_res:
-                    if f"{k}.{obj_k}" not in result:
-                        result[f"{k}.{obj_k}"] = {}
-                    spec = self._get_json_value_spec(obj_res[obj_k])
-                    if spec not in result[f"{k}.{obj_k}"]:
-                        result[f"{k}.{obj_k}"][spec] = {
-                            "values": [], "positions": []}
-                    result[f"{k}.{obj_k}"][spec]["values"].append(
-                        obj_res[obj_k])
-                    result[f"{k}.{obj_k}"][spec]["positions"].append(row_count)
+                    result[f"{k}.{obj_k}"] = obj_res[obj_k]
             return result
         else:
             return {"": obj}
+
+    def _serialize_json_item(self, obj, result={}, row_count=0):
+        for k in obj:
+            obj_res = self._serialize_nested_json_item(obj[k])
+            for obj_k in obj_res:
+                if f"{k}.{obj_k}" not in result:
+                    result[f"{k}.{obj_k}"] = {}
+                spec = self._get_json_value_spec(obj_res[obj_k])
+                if spec not in result[f"{k}.{obj_k}"]:
+                    result[f"{k}.{obj_k}"][spec] = {
+                        "values": [], "positions": []}
+                result[f"{k}.{obj_k}"][spec]["values"].append(
+                    obj_res[obj_k])
+                result[f"{k}.{obj_k}"][spec]["positions"].append(row_count)
+        return result
 
     def _serialize_json(self, items):
         result = {}
