@@ -2,7 +2,7 @@ from .base import Column
 from .stringcolumn import String
 from ..reader import read_binary_uint8, read_binary_bytes_fixed_len, read_binary_str
 from ..util.compat import json
-from ..writer import write_binary_uint8
+from ..writer import write_binary_uint8, write_binary_uint128
 
 
 class NewJsonColumn(Column):
@@ -73,7 +73,7 @@ class NewJsonColumn(Column):
             for spec in jcol:
                 if spec.startswith("Array"):
                     for item in jcol[spec]["values"]:
-                        write_binary_uint8(len(item), buf)
+                        write_binary_uint128(len(item), buf)
                         self.string_column.write_items(item, buf)
                 else:
                     col = self.column_by_spec_getter(spec)
