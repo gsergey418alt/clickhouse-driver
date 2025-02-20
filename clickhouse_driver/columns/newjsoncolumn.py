@@ -31,7 +31,7 @@ class NewJsonColumn(Column):
         for i in range(paths_count):
             paths[read_binary_str(buf)] = None
 
-        # Read value specs.        
+        # Read value specs.
         read_binary_uint8(buf)
         for i in paths:
             read_binary_bytes_fixed_len(buf, 9)
@@ -42,7 +42,7 @@ class NewJsonColumn(Column):
         for path, spec in paths.items():
             col = self.column_by_spec_getter(spec)
             paths[path] = col.read_items(1, buf)[0]
-        
+
         read_binary_bytes_fixed_len(buf, 8)
 
         result = [paths]
@@ -56,25 +56,31 @@ class NewJsonColumn(Column):
         buf.write(b"\x00" * 7)
 
         # Convert items into desired format and write them.
-        paths = self.serialize_json(items[0])
+        paths = self._serialize_json(items)
         write_binary_uint8(len(paths), buf)
         self.string_column.write_items(paths.keys(), buf)
 
-        # Write values types.
-        buf.write(b"\x02" + b"\x00" * 7 + b"\x01")
-        for val in list(paths.values())[:-1]:
-            self.string_column.write_items([self._get_json_value_spec(val)], buf)
-            buf.write(b"\x00" * 7 + b"\x02" + b"\x00" * 7 + b"\x01")
-        self.string_column.write_items([self._get_json_value_spec(list(paths.values())[-1])], buf)
-        buf.write(b"\x00" * 8 + b"\x01")
+        # Write values specs.
+        for col in list(paths.values()):
+            buf.write(b"\x02" + b"\x00" * 7)
+            write_binary_uint8(len(col), buf)
+            self.string_column.write_items(col.keys(), buf)
+            buf.write(b"\x00" * 8)
 
-        # Write values
-        for val in paths.values():
-            spec = self._get_json_value_spec(val)
-            col = self.column_by_spec_getter(spec)
-            col.write_items([val], buf)
-            buf.write(b"\x00")
-        buf.write(b"\x00" * 7)
+        # Write values.
+        for jcol in paths.values():
+            buf.write(self._get_row_posititons(jcol, len(items)))
+            for spec in jcol:
+                if spec.startswith("Array"):
+                    for item in jcol[spec]["values"]:
+                        write_binary_uint8(len(item), buf)
+                        self.string_column.write_items(item, buf)
+                else:
+                    col = self.column_by_spec_getter(spec)
+                    col.write_items(jcol[spec]["values"], buf)
+
+        # Write final padding.
+        buf.write(b"\x00" * 8)
 
     def _get_json_value_spec(self, val):
         if isinstance(val, int):
@@ -85,29 +91,47 @@ class NewJsonColumn(Column):
             return "String"
         elif isinstance(val, bool):
             return "Bool"
-        elif isinstance(val, None):
-            return "String"
         elif isinstance(val, list):
-            return "Tuple(Nullable(String))"
-    
-    def _serialize_json_item(self, obj):
+            return "Array(Nullable(String))"
+
+    def _get_row_posititons(self, col, row_count):
+        result = [255] * row_count
+        count = 0
+        for spec in col:
+            if count == len(col) - 1:
+                count += 1
+            for pos in col[spec]["positions"]:
+                result[pos] = count
+            count += 1
+        return bytes(result)
+
+    def _serialize_json_item(self, obj, result={}, row_count=0):
         if isinstance(obj, dict):
-            result = {}
             for k in obj:
                 obj_res = self._serialize_json_item(obj[k])
                 for obj_k in obj_res:
-                    result[f"{k}.{obj_k}"] = obj_res[obj_k]
+                    if f"{k}.{obj_k}" not in result:
+                        result[f"{k}.{obj_k}"] = {}
+                    spec = self._get_json_value_spec(obj_res[obj_k])
+                    if spec not in result[f"{k}.{obj_k}"]:
+                        result[f"{k}.{obj_k}"][spec] = {
+                            "values": [], "positions": []}
+                    result[f"{k}.{obj_k}"][spec]["values"].append(
+                        obj_res[obj_k])
+                    result[f"{k}.{obj_k}"][spec]["positions"].append(row_count)
             return result
         else:
             return {"": obj}
 
-    def serialize_json(self, obj):
-        res = self._serialize_json_item(obj)
-        for k in list(res.keys()):
-            res[k[:-1]] = res[k]
-            del res[k]
-        res = dict(sorted(res.items()))
-        return res
+    def _serialize_json(self, items):
+        result = {}
+        for row, obj in enumerate(items):
+            result = self._serialize_json_item(obj, result, row)
+        for k in list(result.keys()):
+            result[k[:-1]] = dict(sorted(result[k].items()))
+            del result[k]
+        result = dict(sorted(result.items()))
+        return result
 
 
 def create_newjson_column(spec, column_by_spec_getter, column_options):
