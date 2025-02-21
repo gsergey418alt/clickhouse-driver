@@ -107,7 +107,7 @@ class NewJsonColumn(Column):
         result = [255] * row_count
         count = 0
         for spec in col:
-            if count == len(col) - 1 and len(col) > 1:
+            if count == len(col) - 1 and not (len(col) == 1 and spec != "String"):
                 count += 1
             for pos in col[spec]["positions"]:
                 result[pos] = count
