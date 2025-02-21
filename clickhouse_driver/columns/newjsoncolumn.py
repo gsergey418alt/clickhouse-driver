@@ -1,6 +1,6 @@
 from .base import Column
 from .stringcolumn import String
-from ..reader import read_binary_uint8, read_binary_bytes_fixed_len, read_binary_str
+from ..reader import read_binary_uint8, read_binary_bytes_fixed_len, read_binary_str, read_binary_str_fixed_len, read_binary_uint64
 from ..util.compat import json
 from ..writer import write_binary_uint8, write_binary_uint64
 
@@ -29,23 +29,62 @@ class NewJsonColumn(Column):
         paths_count = read_binary_uint8(buf)
         paths = {}
         for i in range(paths_count):
-            paths[read_binary_str(buf)] = None
+            paths[read_binary_str(buf)] = {}
 
         # Read value specs.
         read_binary_uint8(buf)
-        for i in paths:
-            read_binary_bytes_fixed_len(buf, 9)
-            paths[i] = read_binary_str(buf)
-            read_binary_bytes_fixed_len(buf, 9)
+        for path in paths.values():
+            read_binary_bytes_fixed_len(buf, 8)
+            
+            spec_count = read_binary_uint8(buf)
+            next_byte = read_binary_uint8(buf)
+            next_next_byte = read_binary_uint8(buf)
+            if chr(next_next_byte).isalnum():
+                spec = chr(next_next_byte) + read_binary_str_fixed_len(buf, next_byte - 1)
+                path[spec] = {
+                        "values": [], "positions": []}
+            else:
+                if spec_count != next_byte:
+                    raise Exception(f"Parsing error: spec length verficiation byte invalid: {spec_count} != {next_byte}.")
+                spec = read_binary_str_fixed_len(buf, next_next_byte)
+                path[spec] = {
+                        "values": [], "positions": []}
+
+            for i in range(1, spec_count):
+                spec = read_binary_str(buf)
+                path[spec] = {
+                        "values": [], "positions": []}
+                
+            read_binary_bytes_fixed_len(buf, 8)
 
         # Read values.
-        for path, spec in paths.items():
-            col = self.column_by_spec_getter(spec)
-            paths[path] = col.read_items(1, buf)[0]
+        for path in paths.values():
+            specs = []
+            for i in range(n_items):
+                spec_number = read_binary_uint8(buf)
+                if spec_number < 255:
+                    if spec_number > len(path) - 1 and not (len(path) == 1 and list(path.values())[0] == "String"):
+                        spec_number -= 1
+                    spec = list(path.keys())[spec_number]
+                    specs.append(spec)
+                    path[spec]["positions"].append(i)
 
-        read_binary_bytes_fixed_len(buf, 8)
+            specs = sorted(specs)
+            for spec in specs:
+                if spec.startswith("Array"):
+                    length = read_binary_uint64(buf)
+                    read_binary_bytes_fixed_len(buf, length)
+                    result = []
+                    for i in range(length):
+                        result.append(read_binary_str(buf))
+                    path[spec]["values"].append(result)
+                else:
+                    col = self.column_by_spec_getter(spec)
+                    path[spec]["values"] += col.read_items(1, buf)
 
-        result = [paths]
+        read_binary_bytes_fixed_len(buf, 8 * n_items)
+
+        result = []
         return result
 
     def write_items(self, items, buf):
