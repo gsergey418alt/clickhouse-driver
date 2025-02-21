@@ -57,7 +57,6 @@ class NewJsonColumn(Column):
 
         # Convert items into desired format and write them.
         paths = self._serialize_json(items)
-        print(paths)
         write_binary_uint8(len(paths), buf)
         self.string_column.write_items(paths.keys(), buf)
 
@@ -75,7 +74,7 @@ class NewJsonColumn(Column):
                 if spec.startswith("Array"):
                     for item in jcol[spec]["values"]:
                         write_binary_uint64(len(item), buf)
-                        buf.write(b"\x00" * 2)
+                        buf.write(b"\x00" * len(item))
                         insert = []
                         for elem in item:
                             if isinstance(elem, str):
@@ -108,19 +107,18 @@ class NewJsonColumn(Column):
         result = [255] * row_count
         count = 0
         for spec in col:
+            if count == len(col) - 1 and len(col) > 1:
+                count += 1
             for pos in col[spec]["positions"]:
                 result[pos] = count
-            if count == len(col) - 1:
-                count += 2
-            else:
-                count += 1
+            count += 1
         return bytes(result)
     
-    def _serialize_nested_json_item(self, obj,):
+    def _normalize_json(self, obj,):
         if isinstance(obj, dict):
             result = {}
             for k in obj:
-                obj_res = self._serialize_nested_json_item(obj[k])
+                obj_res = self._normalize_json(obj[k])
                 for obj_k in obj_res:
                     result[f"{k}.{obj_k}"] = obj_res[obj_k]
             return result
@@ -129,7 +127,7 @@ class NewJsonColumn(Column):
 
     def _serialize_json_item(self, obj, result={}, row_count=0):
         for k in obj:
-            obj_res = self._serialize_nested_json_item(obj[k])
+            obj_res = self._normalize_json(obj[k])
             for obj_k in obj_res:
                 if f"{k}.{obj_k}" not in result:
                     result[f"{k}.{obj_k}"] = {}
