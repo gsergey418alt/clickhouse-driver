@@ -35,26 +35,30 @@ class NewJsonColumn(Column):
         read_binary_uint8(buf)
         for path in paths.values():
             read_binary_bytes_fixed_len(buf, 8)
-            
+
+            # ClickHouse client repeats the spec count bytes twice if
+            # there are more than two different specs for a single column.
             spec_count = read_binary_uint8(buf)
             next_byte = read_binary_uint8(buf)
             next_next_byte = read_binary_uint8(buf)
             if chr(next_next_byte).isalnum():
-                spec = chr(next_next_byte) + read_binary_str_fixed_len(buf, next_byte - 1)
+                spec = chr(next_next_byte) + \
+                    read_binary_str_fixed_len(buf, next_byte - 1)
                 path[spec] = {
-                        "values": [], "positions": []}
+                    "values": [], "positions": []}
             else:
                 if spec_count != next_byte:
-                    raise Exception(f"Parsing error: spec length verficiation byte invalid: {spec_count} != {next_byte}.")
+                    raise Exception(
+                        f"Parsing error: spec length verficiation byte invalid: {spec_count} != {next_byte}.")
                 spec = read_binary_str_fixed_len(buf, next_next_byte)
                 path[spec] = {
-                        "values": [], "positions": []}
+                    "values": [], "positions": []}
 
             for i in range(1, spec_count):
                 spec = read_binary_str(buf)
                 path[spec] = {
-                        "values": [], "positions": []}
-                
+                    "values": [], "positions": []}
+
             read_binary_bytes_fixed_len(buf, 8)
 
         # Read values.
@@ -95,7 +99,7 @@ class NewJsonColumn(Column):
         buf.write(b"\x00" * 7)
 
         # Convert items into desired format and write them.
-        paths = self._serialize_json(items)
+        paths = self._unfold_json(items)
         write_binary_uint8(len(paths), buf)
         self.string_column.write_items(paths.keys(), buf)
 
@@ -131,6 +135,9 @@ class NewJsonColumn(Column):
         buf.write(b"\x00" * len(items) * 8)
 
     def _get_json_value_spec(self, val):
+        """
+        Returns a ClickHouse spec for a JSON data type.
+        """
         if isinstance(val, int) and not isinstance(val, bool):
             return "Int64"
         elif isinstance(val, float):
@@ -143,6 +150,9 @@ class NewJsonColumn(Column):
             return "Array(Nullable(String))"
 
     def _get_row_posititons(self, col, row_count):
+        """
+        Returns bytes corresponding to the position of specs between records.
+        """
         result = [255] * row_count
         count = 0
         for spec in col:
@@ -152,8 +162,11 @@ class NewJsonColumn(Column):
                 result[pos] = count
             count += 1
         return bytes(result)
-    
+
     def _normalize_json(self, obj,):
+        """
+        Deals with converting a nested dictionary to a dictionary of depth one.
+        """
         if isinstance(obj, dict):
             result = {}
             for k in obj:
@@ -164,7 +177,10 @@ class NewJsonColumn(Column):
         else:
             return {"": obj}
 
-    def _serialize_json_item(self, obj, result={}, row_count=0):
+    def _unfold_json_item(self, obj, result={}, row_count=0):
+        """
+        Converts a single record into an intermeditary format stored in result.
+        """
         for k in obj:
             obj_res = self._normalize_json(obj[k])
             for obj_k in obj_res:
@@ -179,10 +195,13 @@ class NewJsonColumn(Column):
                 result[f"{k}.{obj_k}"][spec]["positions"].append(row_count)
         return result
 
-    def _serialize_json(self, items):
+    def _unfold_json(self, items):
+        """
+        Converts the passed dictionary into an intermediary format.
+        """
         result = {}
         for row, obj in enumerate(items):
-            result = self._serialize_json_item(obj, result, row)
+            result = self._unfold_json_item(obj, result, row)
         for k in list(result.keys()):
             result[k[:-1]] = dict(sorted(result[k].items()))
             del result[k]
