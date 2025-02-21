@@ -84,7 +84,7 @@ class NewJsonColumn(Column):
 
         read_binary_bytes_fixed_len(buf, 8 * n_items)
 
-        result = []
+        result = [paths]
         return result
 
     def write_items(self, items, buf):
