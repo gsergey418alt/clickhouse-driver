@@ -88,8 +88,7 @@ class NewJsonColumn(Column):
 
         read_binary_bytes_fixed_len(buf, 8 * n_items)
 
-        result = [paths]
-        return result
+        return self._fold_json(n_items, paths)
 
     def write_items(self, items, buf):
         # Convert all items to dictionaries.
@@ -165,7 +164,7 @@ class NewJsonColumn(Column):
 
     def _normalize_json(self, obj,):
         """
-        Deals with converting a nested dictionary to a dictionary of depth one.
+        Deals with converting a nested dictionary to a dictionary of paths with depth one.
         """
         if isinstance(obj, dict):
             result = {}
@@ -206,6 +205,36 @@ class NewJsonColumn(Column):
             result[k[:-1]] = dict(sorted(result[k].items()))
             del result[k]
         result = dict(sorted(result.items()))
+        return result
+    
+    def _denormalize_json(self, obj):
+        """
+        Converts a dictionary of paths with depth one to a nested dictionary.
+        """
+        keys = list(obj.keys())
+        for key in keys:
+            split_key = key.split(".")
+            if len(split_key) > 1:
+                parent = obj
+                for part in split_key[:-1]:
+                    if part not in parent:
+                        parent[part] = {}
+                    parent = parent[part]
+                parent[split_key[-1]] = obj[key]
+                del obj[key]
+
+    def _fold_json(self, n_items, obj):
+        """
+        Converts an intermediary record back to a list of rows
+        """
+        result = [{} for _ in range(n_items)]
+
+        for key, item in obj.items():
+            for spec in item.values():
+                for i in range(len(spec["values"])):
+                    result[spec["positions"][i]][key] = spec["values"][i]
+
+        [self._denormalize_json(item) for item in result]
         return result
 
 
