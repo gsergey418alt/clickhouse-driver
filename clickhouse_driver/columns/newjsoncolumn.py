@@ -76,12 +76,27 @@ class NewJsonColumn(Column):
             specs = sorted(specs)
             for spec in specs:
                 if spec.startswith("Array"):
-                    length = read_binary_uint64(buf)
-                    read_binary_bytes_fixed_len(buf, length)
-                    result = []
-                    for i in range(length):
-                        result.append(read_binary_str(buf))
-                    path[spec]["values"].append(result)
+                    if len(path[spec]["values"]) > 0:
+                        continue
+                    bound = read_binary_uint64(buf)
+                    bounds = [bound]
+                    while True:
+                        bound = read_binary_uint8(buf)
+                        if bound == 0:
+                            read_binary_bytes_fixed_len(buf, bounds[-1] - 1)
+                            break
+                        else:
+                            for i in range(1, 8):
+                                bound += read_binary_uint8(buf) << (8 * i)
+                            bounds.append(bound)
+
+                    prev_bound = 0
+                    for bound in bounds:
+                        result = []
+                        for i in range(bound - prev_bound):
+                            result.append(read_binary_str(buf))
+                        path[spec]["values"].append(result)
+                        prev_bound = bound
                 else:
                     col = self.column_by_spec_getter(spec)
                     path[spec]["values"] += col.read_items(1, buf)
@@ -114,9 +129,13 @@ class NewJsonColumn(Column):
             buf.write(self._get_row_posititons(jcol, len(items)))
             for spec in jcol:
                 if spec.startswith("Array"):
+                    bound = 0
                     for item in jcol[spec]["values"]:
-                        write_binary_uint64(len(item), buf)
-                        buf.write(b"\x00" * len(item))
+                        bound += len(item)
+                        write_binary_uint64(bound, buf)
+                        
+                    buf.write(b"\x00" * bound)
+                    for item in jcol[spec]["values"]:
                         insert = []
                         for elem in item:
                             if isinstance(elem, str):
