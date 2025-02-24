@@ -90,12 +90,10 @@ class NewJsonColumn(Column):
                                 bound += read_binary_uint8(buf) << (8 * i)
                             bounds.append(bound)
 
+                    col = self.column_by_spec_getter(spec[6:-1])
                     prev_bound = 0
                     for bound in bounds:
-                        result = []
-                        for i in range(bound - prev_bound):
-                            result.append(read_binary_str(buf))
-                        path[spec]["values"].append(result)
+                        path[spec]["values"].append(col.read_items(bound - prev_bound, buf))
                         prev_bound = bound
                 else:
                     col = self.column_by_spec_getter(spec)
