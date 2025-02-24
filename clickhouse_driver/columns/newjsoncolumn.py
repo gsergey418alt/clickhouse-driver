@@ -208,9 +208,10 @@ class NewJsonColumn(Column):
         if isinstance(obj, dict):
             result = {}
             for k in obj:
-                obj_res = self._normalize_json(obj[k])
-                for obj_k in obj_res:
-                    result[f"{k}.{obj_k}"] = obj_res[obj_k]
+                if obj[k] is not None:
+                    obj_res = self._normalize_json(obj[k])
+                    for obj_k in obj_res:
+                        result[f"{k}.{obj_k}"] = obj_res[obj_k]
             return result
         else:
             return {"": obj}
@@ -220,17 +221,18 @@ class NewJsonColumn(Column):
         Converts a single record into an intermeditary format stored in result.
         """
         for k in obj:
-            obj_res = self._normalize_json(obj[k])
-            for obj_k in obj_res:
-                if f"{k}.{obj_k}" not in result:
-                    result[f"{k}.{obj_k}"] = {}
-                spec = self._get_json_value_spec(obj_res[obj_k])
-                if spec not in result[f"{k}.{obj_k}"]:
-                    result[f"{k}.{obj_k}"][spec] = {
-                        "values": [], "positions": []}
-                result[f"{k}.{obj_k}"][spec]["values"].append(
-                    obj_res[obj_k])
-                result[f"{k}.{obj_k}"][spec]["positions"].append(row_count)
+            if obj[k] is not None:
+                obj_res = self._normalize_json(obj[k])
+                for obj_k in obj_res:
+                    if f"{k}.{obj_k}" not in result:
+                        result[f"{k}.{obj_k}"] = {}
+                    spec = self._get_json_value_spec(obj_res[obj_k])
+                    if spec not in result[f"{k}.{obj_k}"]:
+                        result[f"{k}.{obj_k}"][spec] = {
+                            "values": [], "positions": []}
+                    result[f"{k}.{obj_k}"][spec]["values"].append(
+                        obj_res[obj_k])
+                    result[f"{k}.{obj_k}"][spec]["positions"].append(row_count)
         return result
 
     def _unfold_json(self, items):
