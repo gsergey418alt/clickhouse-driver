@@ -156,7 +156,7 @@ class NewJsonColumn(Column):
         # Write final padding.
         buf.write(b"\x00" * len(items) * 8)
 
-    def _get_json_value_spec(self, val):
+    def _get_json_value_spec(self, val, nested=False):
         """
         Returns a ClickHouse spec for a JSON data type.
         """
@@ -175,7 +175,10 @@ class NewJsonColumn(Column):
                 if t not in val_types:
                     val_types.append(t)
             if dict in val_types or list in val_types:
-                return "Array(Nullable(String))"
+                if not nested:
+                    return "Array(Nullable(String))"
+                else:
+                    return "JSON(max_dynamic_types=16, max_dynamic_paths=256)"
             else:
                 if str in val_types:
                     return "Array(Nullable(String))"
