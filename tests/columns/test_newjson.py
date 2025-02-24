@@ -20,28 +20,155 @@ class NewJSONTestCase(BaseTestCase):
         with self.create_table('a JSON'):
             data = [
                 ({},),
-                ({'key1': 1}, ),
-                ({'key1': 2.1, 'key2': {'nested': 'key'}}, ),
-                ({'key1': 3, 'key3': ['test'], 'key4': [10, 20]}, )
-            ]
+                ({
+                    "foo": "bar",
+                    "bar": "baz"
+                },),
+                ({
+                    "baz": "qux",
+                    "foo": 4919
+                },),
+                ({"qux": "quux"},),
+                ({"foo": "AAAA"},),
+                ({"qux": 14099},),
+                ({"foo": [1, 0.2, "bar", "baz", False]},),
+                ({"foo": 0.1337},),
+                ({"foo": False},),
+                ({"bar": 1337},),
+                ({"bar": 0.999},),
+                ({"quux": 1000},),
+                ({"quux": 2000},),
+                ({"alice": 0.432},),
+                ({"bob": 0.991},),
+                ({"boolean": True},),
+                ({"string": "A quick brown fox jumps over the lazy dog."},),
+                ({"nested": {
+                    "number": 4141,
+                    "string": "Hello, World!",
+                    "double-nested": {
+                        "foo": "bar",
+                        "no.escaping": "1337",
+                        "triple-nested": {
+                            "foo": "bar"
+                        }
+                    }
+                }
+                },)]
             self.client.execute('INSERT INTO test (a) VALUES', data)
             query = 'SELECT * FROM test'
             inserted = self.emit_cli(query)
             self.assertEqual(
                 inserted,
-                "(0,(''),[],[])\n"
-                "(1,(''),[],[])\n"
-                "(2.1,('key'),[],[])\n"
-                "(3,(''),['test'],[10,20])\n"
+                '{}\n'
+                '{"bar":"baz","foo":"bar"}\n'
+                '{"baz":"qux","foo":"4919"}\n'
+                '{"qux":"quux"}\n'
+                '{"foo":"AAAA"}\n'
+                '{"qux":"14099"}\n'
+                '{"foo":["1","0.2","bar","baz","false"]}\n'
+                '{"foo":0.1337}\n'
+                '{"foo":false}\n'
+                '{"bar":"1337"}\n'
+                '{"bar":0.999}\n'
+                '{"quux":"1000"}\n'
+                '{"quux":"2000"}\n'
+                '{"alice":0.432}\n'
+                '{"bob":0.991}\n'
+                '{"boolean":true}\n'
+                '{"string":"A quick brown fox jumps over the lazy dog."}\n'
+                '{"nested":{"double-nested":{"foo":"bar","no":{"escaping":"1337"},"triple-nested":{"foo":"bar"}},"number":"4141","string":"Hello, World!"}}\n'
             )
             inserted = self.client.execute(query)
             data_with_all_keys = [
-                ({'key1': 0, 'key2': {'nested': ''}, 'key3': [], 'key4': []},),
-                ({'key1': 1, 'key2': {'nested': ''}, 'key3': [], 'key4': []},),
-                ({'key1': 2.1, 'key2': {'nested': 'key'}, 'key3': [],
-                  'key4': []},),
-                ({'key1': 3, 'key2': {'nested': ''}, 'key3': ['test'],
-                  'key4': [10, 20]},)
+                ({},),
+                (
+                    {
+                        "bar": "baz",
+                        "foo": "bar"
+                    },),
+                (
+                    {
+                        "baz": "qux",
+                        "foo": 4919
+                    },),
+                (
+                    {
+                        "qux": "quux"
+                    },),
+                (
+                    {
+                        "foo": "AAAA"
+                    },),
+                (
+                    {
+                        "qux": 14099
+                    },),
+                (
+                    {
+                        "foo": [
+                            "1",
+                            "0.2",
+                            "bar",
+                            "baz",
+                            "false"
+                        ]
+                    },),
+                (
+                    {
+                        "foo": 0.1337
+                    },),
+                (
+                    {
+                        "foo": False
+                    },),
+                (
+                    {
+                        "bar": 1337
+                    },),
+                (
+                    {
+                        "bar": 0.999
+                    },),
+                (
+                    {
+                        "quux": 1000
+                    },),
+                (
+                    {
+                        "quux": 2000
+                    },),
+                (
+                    {
+                        "alice": 0.432
+                    },),
+                (
+                    {
+                        "bob": 0.991
+                    },),
+                (
+                    {
+                        "boolean": True
+                    },),
+                (
+                    {
+                        "string": "A quick brown fox jumps over the lazy dog."
+                    },),
+                (
+                    {
+                        "nested": {
+                            "double-nested": {
+                                "foo": "bar",
+                                "no": {
+                                    "escaping": "1337"
+                                },
+                                "triple-nested": {
+                                    "foo": "bar"
+                                }
+                            },
+                            "number": 4141,
+                            "string": "Hello, World!"
+                        }
+                    },)
             ]
             self.assertEqual(inserted, data_with_all_keys)
 
