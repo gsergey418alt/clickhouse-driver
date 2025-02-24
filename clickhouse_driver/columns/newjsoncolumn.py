@@ -67,7 +67,7 @@ class NewJsonColumn(Column):
             for i in range(n_items):
                 spec_number = read_binary_uint8(buf)
                 if spec_number < 255:
-                    if spec_number > len(path) - 1 and not (len(path) == 1 and list(path.values())[0] == "String"):
+                    if spec_number > len(path) - 1 and not (len(path) <= 2 and "String" in path.values()):
                         spec_number -= 1
                     spec = list(path.keys())[spec_number]
                     specs.append(spec)
@@ -174,7 +174,7 @@ class NewJsonColumn(Column):
         result = [255] * row_count
         count = 0
         for spec in col:
-            if count == len(col) - 1 and not (len(col) == 1 and spec != "String"):
+            if count == len(col) - 1 and not (len(col) <= 2 and not "String" in col):
                 count += 1
             for pos in col[spec]["positions"]:
                 result[pos] = count
