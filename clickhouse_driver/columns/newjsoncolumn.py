@@ -133,16 +133,22 @@ class NewJsonColumn(Column):
                         write_binary_uint64(bound, buf)
                         
                     buf.write(b"\x00" * bound)
+
+                    array_type = spec[6:-1]
                     for item in jcol[spec]["values"]:
                         insert = []
-                        for elem in item:
-                            if isinstance(elem, str):
-                                insert.append(elem)
-                            elif isinstance(elem, bool):
-                                insert.append(str(elem).lower())
-                            else:
-                                insert.append(str(elem))
-                        self.string_column.write_items(insert, buf)
+                        if array_type == "Nullable(String)":
+                            for elem in item:
+                                if isinstance(elem, str):
+                                    insert.append(elem)
+                                elif isinstance(elem, bool):
+                                    insert.append(str(elem).lower())
+                                else:
+                                    insert.append(str(elem))
+                        else:
+                            insert = item
+                        col = self.column_by_spec_getter(spec[6:-1])
+                        col.write_items(insert, buf)
                 else:
                     col = self.column_by_spec_getter(spec)
                     col.write_items(jcol[spec]["values"], buf)
@@ -163,7 +169,23 @@ class NewJsonColumn(Column):
         elif isinstance(val, bool):
             return "Bool"
         elif isinstance(val, list):
-            return "Array(Nullable(String))"
+            val_types = []
+            for item in val:
+                t = type(item)
+                if t not in val_types:
+                    val_types.append(t)
+            if dict in val_types or list in val_types:
+                return "Array(Nullable(String))"
+            else:
+                if str in val_types:
+                    return "Array(Nullable(String))"
+                elif float in val_types:
+                    if bool not in val_types:
+                        return "Array(Nullable(Float64))"
+                    else:
+                        return "Array(Nullable(String))"
+                else:
+                    return "Array(Nullable(Int64))"
 
     def _get_row_posititons(self, col, row_count):
         """

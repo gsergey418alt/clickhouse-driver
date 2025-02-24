@@ -50,7 +50,9 @@ class NewJSONTestCase(BaseTestCase):
                         "no.escaping": "1337",
                         "triple-nested": {
                             "foo": "bar"
-                        }
+                        },
+                        "numbers": [1, 2, 3],
+                        "floats": [0.1, 0.2, 4]
                     }
                 }
                 },)]
@@ -76,7 +78,7 @@ class NewJSONTestCase(BaseTestCase):
                 '{"bob":0.991}\n'
                 '{"boolean":true}\n'
                 '{"string":"A quick brown fox jumps over the lazy dog."}\n'
-                '{"nested":{"double-nested":{"foo":"bar","no":{"escaping":"1337"},"triple-nested":{"foo":"bar"}},"number":"4141","string":"Hello, World!"}}\n'
+                '{"nested":{"double-nested":{"floats":[0.1,0.2,4],"foo":"bar","no":{"escaping":"1337"},"numbers":["1","2","3"],"triple-nested":{"foo":"bar"}},"number":"4141","string":"Hello, World!"}}\n'
             )
             inserted = self.client.execute(query)
             data_with_all_keys = [
@@ -105,13 +107,13 @@ class NewJSONTestCase(BaseTestCase):
                     },),
                 (
                     {
-                        "foo": [
+                        "foo": (
                             "1",
                             "0.2",
                             "bar",
                             "baz",
                             "false"
-                        ]
+                        )
                     },),
                 (
                     {
@@ -157,10 +159,20 @@ class NewJSONTestCase(BaseTestCase):
                     {
                         "nested": {
                             "double-nested": {
+                                "floats": (
+                                    0.1,
+                                    0.2,
+                                    4.0
+                                ),
                                 "foo": "bar",
                                 "no": {
                                     "escaping": "1337"
                                 },
+                                "numbers": (
+                                    1,
+                                    2,
+                                    3
+                                ),
                                 "triple-nested": {
                                     "foo": "bar"
                                 }
