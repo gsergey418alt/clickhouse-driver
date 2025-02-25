@@ -69,7 +69,7 @@ class NewJsonColumn(Column):
             for i in range(n_items):
                 spec_number = read_binary_uint8(buf)
                 if spec_number < 255:
-                    if spec_number > len(path) - 1 and len([v for v in path.values() if "String" in v or "Tuple" in v]) == 0:
+                    if spec_number > len(path) - 1 and len([col for col in path.values() if [v for v in col if v.startswith("String") or v.startswith("Tuple")]]) == 0:
                         spec_number -= 1
                     spec = list(path.keys())[spec_number]
                     if not spec.startswith("Array") or spec not in specs:
@@ -199,7 +199,7 @@ class NewJsonColumn(Column):
         result = [255] * row_count
         count = 0
         for spec in col:
-            if count == len(col) - 1 and len([v for v in col.keys() if "String" in v or "Tuple" in v]) > 0:
+            if count == len(col) - 1 and len([v for v in col.keys() if v.startswith("String") or v.startswith("Tuple")]) > 0:
                 count += 1
             for pos in col[spec]["positions"]:
                 result[pos] = count
