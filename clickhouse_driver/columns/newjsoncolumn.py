@@ -69,7 +69,7 @@ class NewJsonColumn(Column):
             for i in range(n_items):
                 spec_number = read_binary_uint8(buf)
                 if spec_number < 255:
-                    if spec_number > len(path) - 1 and not "String" in path.values():
+                    if spec_number > len(path) - 1 and len([v for v in path.values() if "String" in v or "Tuple" in v]) == 0:
                         spec_number -= 1
                     spec = list(path.keys())[spec_number]
                     if not spec.startswith("Array") or spec not in specs:
@@ -81,7 +81,8 @@ class NewJsonColumn(Column):
             for spec in specs:
                 if spec.startswith("Array"):
                     reader = self.column_by_spec_getter(spec)
-                    path[spec]["values"] = reader.read_data(len(path[spec]["positions"]), buf)
+                    path[spec]["values"] = reader.read_data(
+                        len(path[spec]["positions"]), buf)
                 else:
                     reader = self.column_by_spec_getter(spec)
                     path[spec]["values"] += reader.read_items(1, buf)
@@ -94,36 +95,55 @@ class NewJsonColumn(Column):
         # Convert all items to dictionaries.
         items = [x if not isinstance(x, str) else json.loads(x) for x in items]
 
-        # Write padding bytes.
-        buf.write(b"\x00" * 7)
-
-        # Convert items into desired format and write them.
         paths = self._unfold_json(items)
+
+        self._write_paths(paths, buf)
+        self._write_specs(paths, buf)
+        self._write_values(paths, len(items), buf)
+
+    def _write_paths(self, paths, buf):
+        """
+        Convert items into desired format and write them.
+        """
+        buf.write(b"\x00" * 7)
         write_binary_uint8(len(paths), buf)
         self.string_column.write_items(paths.keys(), buf)
 
-        # Write values specs.
+    def _write_specs(self, paths, buf):
+        """
+        Write values specs.
+        """
         for writer in list(paths.values()):
             buf.write(b"\x02" + b"\x00" * 7)
             write_binary_uint8(len(writer), buf)
             self.string_column.write_items(writer.keys(), buf)
             buf.write(b"\x00" * 8)
 
-        # Write values.
+    def _write_values(self, paths, rows, buf):
+        """
+        Write values.
+        """
         for col in paths.values():
-            buf.write(self._get_row_posititons(col, len(items)))
+            for spec in col.keys():
+                if spec.startswith("Tuple"):
+                    writer = self.column_by_spec_getter(spec)
+                    writer.write_state_prefix(buf)
+            buf.write(self._get_row_posititons(col, rows))
             for spec in col:
                 if spec.startswith("Array"):
                     insert = self._preprocess_array(
                         col[spec]["values"], spec[6:-1])
                     writer = self.column_by_spec_getter(spec)
                     writer.write_data(insert, buf)
+                elif spec.startswith("Tuple"):
+                    writer = self.column_by_spec_getter(spec)
+                    writer.write_items(col[spec]["values"], buf)
                 else:
                     writer = self.column_by_spec_getter(spec)
                     writer.write_items(col[spec]["values"], buf)
 
         # Write final padding.
-        buf.write(b"\x00" * len(items) * 8)
+        buf.write(b"\x00" * rows * 8)
 
     def _get_json_value_spec(self, item):
         """
@@ -137,6 +157,8 @@ class NewJsonColumn(Column):
             return "String"
         elif isinstance(item, bool):
             return "Bool"
+        elif isinstance(item, dict):
+            return "JSON(max_dynamic_types=16, max_dynamic_paths=256)"
         elif isinstance(item, list):
             value_types = []
             for entry in item:
@@ -148,10 +170,11 @@ class NewJsonColumn(Column):
                     item.remove(None)
                 result = "Tuple("
                 for entry in item:
-                    if not isinstance(entry, dict) and not isinstance(entry, list):
-                        result += f"Nullable({self._get_json_value_spec(entry)}), "
+                    spec = self._get_json_value_spec(entry)
+                    if not spec.startswith("Array") and not spec.startswith("JSON"):
+                        result += f"Nullable({spec}), "
                     else:
-                        result += "JSON(max_dynamic_types=16, max_dynamic_paths=256), "
+                        result += f"{spec}, "
                 result = result[:-2] + ")"
                 return result
             else:
@@ -176,7 +199,7 @@ class NewJsonColumn(Column):
         result = [255] * row_count
         count = 0
         for spec in col:
-            if count == len(col) - 1 and "String" in col:
+            if count == len(col) - 1 and len([v for v in col.keys() if "String" in v or "Tuple" in v]) > 0:
                 count += 1
             for pos in col[spec]["positions"]:
                 result[pos] = count
