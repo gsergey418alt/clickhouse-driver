@@ -64,40 +64,27 @@ class NewJsonColumn(Column):
         # Read values.
         for path in paths.values():
             specs = []
+
+            # Read value positions in the record list.
             for i in range(n_items):
                 spec_number = read_binary_uint8(buf)
                 if spec_number < 255:
-                    if spec_number > len(path) - 1 and not (len(path) <= 2 and "String" in path.values()):
+                    if spec_number > len(path) - 1 and not "String" in path.values():
                         spec_number -= 1
                     spec = list(path.keys())[spec_number]
-                    specs.append(spec)
+                    if not spec.startswith("Array") or spec not in specs:
+                        specs.append(spec)
                     path[spec]["positions"].append(i)
 
+            # Read values of that column.
             specs = sorted(specs)
             for spec in specs:
                 if spec.startswith("Array"):
-                    if len(path[spec]["values"]) > 0:
-                        continue
-                    bound = read_binary_uint64(buf)
-                    bounds = [bound]
-                    while True:
-                        bound = read_binary_uint8(buf)
-                        if bound == 0:
-                            read_binary_bytes_fixed_len(buf, bounds[-1] - 1)
-                            break
-                        else:
-                            for i in range(1, 8):
-                                bound += read_binary_uint8(buf) << (8 * i)
-                            bounds.append(bound)
-
-                    col = self.column_by_spec_getter(spec[6:-1])
-                    prev_bound = 0
-                    for bound in bounds:
-                        path[spec]["values"].append(col.read_items(bound - prev_bound, buf))
-                        prev_bound = bound
+                    reader = self.column_by_spec_getter(spec)
+                    path[spec]["values"] = reader.read_data(len(path[spec]["positions"]), buf)
                 else:
-                    col = self.column_by_spec_getter(spec)
-                    path[spec]["values"] += col.read_items(1, buf)
+                    reader = self.column_by_spec_getter(spec)
+                    path[spec]["values"] += reader.read_items(1, buf)
 
         read_binary_bytes_fixed_len(buf, 8 * n_items)
 
@@ -116,79 +103,71 @@ class NewJsonColumn(Column):
         self.string_column.write_items(paths.keys(), buf)
 
         # Write values specs.
-        for col in list(paths.values()):
+        for writer in list(paths.values()):
             buf.write(b"\x02" + b"\x00" * 7)
-            write_binary_uint8(len(col), buf)
-            self.string_column.write_items(col.keys(), buf)
+            write_binary_uint8(len(writer), buf)
+            self.string_column.write_items(writer.keys(), buf)
             buf.write(b"\x00" * 8)
 
         # Write values.
-        for jcol in paths.values():
-            buf.write(self._get_row_posititons(jcol, len(items)))
-            for spec in jcol:
+        for col in paths.values():
+            buf.write(self._get_row_posititons(col, len(items)))
+            for spec in col:
                 if spec.startswith("Array"):
-                    bound = 0
-                    for item in jcol[spec]["values"]:
-                        bound += len(item)
-                        write_binary_uint64(bound, buf)
-                        
-                    buf.write(b"\x00" * bound)
-
-                    array_type = spec[6:-1]
-                    for item in jcol[spec]["values"]:
-                        insert = []
-                        if array_type == "Nullable(String)":
-                            for elem in item:
-                                if isinstance(elem, str):
-                                    insert.append(elem)
-                                elif isinstance(elem, bool):
-                                    insert.append(str(elem).lower())
-                                else:
-                                    insert.append(str(elem))
-                        else:
-                            insert = item
-                        col = self.column_by_spec_getter(spec[6:-1])
-                        col.write_items(insert, buf)
+                    insert = self._preprocess_array(
+                        col[spec]["values"], spec[6:-1])
+                    writer = self.column_by_spec_getter(spec)
+                    writer.write_data(insert, buf)
                 else:
-                    col = self.column_by_spec_getter(spec)
-                    col.write_items(jcol[spec]["values"], buf)
+                    writer = self.column_by_spec_getter(spec)
+                    writer.write_items(col[spec]["values"], buf)
 
         # Write final padding.
         buf.write(b"\x00" * len(items) * 8)
 
-    def _get_json_value_spec(self, val, nested=False):
+    def _get_json_value_spec(self, item):
         """
         Returns a ClickHouse spec for a JSON data type.
         """
-        if isinstance(val, int) and not isinstance(val, bool):
+        if isinstance(item, int) and not isinstance(item, bool):
             return "Int64"
-        elif isinstance(val, float):
+        elif isinstance(item, float):
             return "Float64"
-        elif isinstance(val, str):
+        elif isinstance(item, str):
             return "String"
-        elif isinstance(val, bool):
+        elif isinstance(item, bool):
             return "Bool"
-        elif isinstance(val, list):
-            val_types = []
-            for item in val:
-                t = type(item)
-                if t not in val_types:
-                    val_types.append(t)
-            if dict in val_types or list in val_types:
-                if not nested:
-                    return "Array(Nullable(String))"
-                else:
-                    return "JSON(max_dynamic_types=16, max_dynamic_paths=256)"
+        elif isinstance(item, list):
+            value_types = []
+            for entry in item:
+                t = type(entry)
+                if t not in value_types:
+                    value_types.append(t)
+            if dict in value_types or list in value_types:
+                while None in item:
+                    item.remove(None)
+                result = "Tuple("
+                for entry in item:
+                    if not isinstance(entry, dict) and not isinstance(entry, list):
+                        result += f"Nullable({self._get_json_value_spec(entry)}), "
+                    else:
+                        result += "JSON(max_dynamic_types=16, max_dynamic_paths=256), "
+                result = result[:-2] + ")"
+                return result
             else:
-                if str in val_types:
+                if str in value_types:
                     return "Array(Nullable(String))"
-                elif float in val_types:
-                    if bool not in val_types:
+                elif float in value_types:
+                    if bool not in value_types:
                         return "Array(Nullable(Float64))"
                     else:
                         return "Array(Nullable(String))"
-                else:
+                elif int in value_types:
                     return "Array(Nullable(Int64))"
+                elif bool in value_types:
+                    return "Array(Nullable(Bool))"
+                else:
+                    return "Array(Nullable(String))"
 
     def _get_row_posititons(self, col, row_count):
         """
@@ -197,7 +176,7 @@ class NewJsonColumn(Column):
         result = [255] * row_count
         count = 0
         for spec in col:
-            if count == len(col) - 1 and not (len(col) <= 2 and not "String" in col):
+            if count == len(col) - 1 and "String" in col:
                 count += 1
             for pos in col[spec]["positions"]:
                 result[pos] = count
@@ -250,7 +229,7 @@ class NewJsonColumn(Column):
             del result[k]
         result = dict(sorted(result.items()))
         return result
-    
+
     def _denormalize_json(self, obj):
         """
         Converts a dictionary of paths with depth one to a nested dictionary.
@@ -280,6 +259,54 @@ class NewJsonColumn(Column):
 
         [self._denormalize_json(item) for item in result]
         return result
+
+    def _preprocess_array(self, values, array_type):
+        """
+        Preprocesses array values for insert.
+        """
+        insert = []
+        if "String" in array_type:
+            for item in values:
+                arr = []
+                for elem in item:
+                    if isinstance(elem, str):
+                        arr.append(elem)
+                    elif isinstance(elem, bool):
+                        arr.append(str(elem).lower())
+                    elif elem is None:
+                        arr.append("null")
+                    else:
+                        arr.append(str(elem))
+                insert.append(arr)
+        elif "Int64" in array_type:
+            for item in values:
+                arr = []
+                for elem in item:
+                    if elem is None:
+                        arr.append(0)
+                    else:
+                        arr.append(int(elem))
+                insert.append(arr)
+        elif "Float64" in array_type:
+            for item in values:
+                arr = []
+                for elem in item:
+                    if elem is None:
+                        arr.append(0)
+                    else:
+                        arr.append(float(elem))
+                insert.append(arr)
+        elif "Bool" in array_type:
+            for item in values:
+                arr = []
+                for elem in item:
+                    if elem is not None:
+                        arr.append(bool(elem))
+                insert.append(arr)
+        else:
+            insert = values
+
+        return insert
 
 
 def create_newjson_column(spec, column_by_spec_getter, column_options):
