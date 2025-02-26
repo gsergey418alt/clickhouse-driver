@@ -74,35 +74,88 @@ class NewJsonColumn(Column):
 
             read_binary_bytes_fixed_len(buf, 8)
 
+            for col in paths:
+                for spec in paths[col]:
+                    if spec.startswith("Tuple") and "JSON" in spec:
+                        self._read_tuple_header(buf, paths[col], spec)
+    
+    def _read_tuple_header(self, buf, col, spec):
+        """
+        Read header for JSON objects inside a tuple.
+        """
+        for i, subspec in enumerate(spec[6:-2].split("), ")):
+            if subspec.startswith("JSON"):
+                paths = self._read_paths(buf)
+                self._read_specs(buf, paths)
+                col[spec]["values"].append(paths)
+            else:
+                col[spec]["values"].append(None)
+
     def _read_values(self, buf, paths, n_items):
         """
         Read values.
         """
-        for path in paths.values():
-            specs = []
-            # Read value positions in the record list.
-            for i in range(n_items):
-                spec_number = read_binary_uint8(buf)
-                if spec_number < 255:
-                    if spec_number > len(path) - 1 and len([col for col in path.values() if [v for v in col if v.startswith("String") or v.startswith("Tuple")]]) == 0:
-                        spec_number -= 1
-                    spec = list(path.keys())[spec_number]
-                    if not spec.startswith("Array") or spec not in specs:
-                        specs.append(spec)
-                    path[spec]["positions"].append(i)
+        for col in paths.values():
+            specs = self._read_row_positions(buf, col, n_items)
 
             # Read values of that column.
-            specs = sorted(specs)
             for spec in specs:
                 if spec.startswith("Array"):
                     reader = self.column_by_spec_getter(spec)
-                    path[spec]["values"] = reader.read_data(
-                        len(path[spec]["positions"]), buf)
+                    col[spec]["values"] = reader.read_data(
+                        len(col[spec]["positions"]), buf)
+                elif spec.startswith("Tuple"):
+                    if "JSON" in spec:
+                        self._read_tuple_values(buf, col, spec)
+                        pass
+                    else:
+                        reader = self.column_by_spec_getter(spec)
+                        col[spec]["values"] += reader.read_items(1, buf)
                 else:
                     reader = self.column_by_spec_getter(spec)
-                    path[spec]["values"] += reader.read_items(1, buf)
+                    col[spec]["values"] += reader.read_items(1, buf)
 
         read_binary_bytes_fixed_len(buf, 8 * n_items)
+
+    def _read_tuple_values(self, buf, col, spec):
+        """
+        Read values in a tuple with nested JSON elements.
+        """
+        for i, subspec in enumerate(spec[6:-2].split("), ")):
+            if not subspec.startswith("Array") and not subspec.startswith("Tuple") and not subspec.startswith("JSON"):
+                buf.read(len(col[spec]["values"]))
+            for row in col[spec]["values"]:
+                if subspec.startswith("JSON"):
+                    pass
+                elif subspec.startswith("Array"):
+                    reader = self.column_by_spec_getter(
+                        subspec + ")")
+                    row[i] = reader.read_data(1, buf)
+                elif subspec.startswith("Tuple"):
+                    reader = self.column_by_spec_getter(
+                        subspec[6:])
+                    row[i] = reader.read_data(1, buf)
+                else:
+                    reader = self.column_by_spec_getter(
+                        subspec[9:])
+                    row[i] = reader.read_data(1, buf)
+
+    def _read_row_positions(self, buf, col, n_items):
+        """
+        Read value positions in the record list.
+        """
+        specs = []
+        for i in range(n_items):
+            spec_number = read_binary_uint8(buf)
+            if spec_number < 255:
+                if spec_number > len(col) - 1 and len([spec for spec in col.values() if [v for v in spec if v.startswith("String") or v.startswith("Tuple")]]) == 0:
+                    spec_number -= 1
+                spec = list(col.keys())[spec_number]
+                if not spec.startswith("Array") or spec not in specs:
+                    specs.append(spec)
+                col[spec]["positions"].append(i)
+        
+        return sorted(specs)
 
     def write_items(self, items, buf, depth=0):
         # Convert all items to dictionaries.
@@ -176,7 +229,7 @@ class NewJsonColumn(Column):
 
     def _write_tuple_values(self, col, spec, depth, buf):
         """
-        Write values in a tuple.
+        Write values in a tuple with nested JSON elements.
         """
         for i, subspec in enumerate(spec[6:-2].split("), ")):
             if not subspec.startswith("Array") and not subspec.startswith("Tuple") and not subspec.startswith("JSON"):
