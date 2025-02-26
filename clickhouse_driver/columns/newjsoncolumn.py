@@ -22,16 +22,29 @@ class NewJsonColumn(Column):
         write_binary_uint8(2, buf)
 
     def read_items(self, n_items, buf):
-        # Skip padding.
+        paths = self._read_paths(buf)
+        self._read_specs(buf, paths)
+        self._read_values(buf, paths, n_items)
+
+        return self._fold_json(n_items, paths)
+
+    def _read_paths(self, buf):
+        """
+        Read JSON paths.
+        """
         read_binary_bytes_fixed_len(buf, 9)
 
-        # Read JSON paths.
         paths_count = read_binary_uint8(buf)
         paths = {}
         for i in range(paths_count):
             paths[read_binary_str(buf)] = {}
 
-        # Read value specs.
+        return paths
+
+    def _read_specs(self, buf, paths):
+        """
+        Read value specs.
+        """
         read_binary_uint8(buf)
         for path in paths.values():
             read_binary_bytes_fixed_len(buf, 8)
@@ -61,10 +74,12 @@ class NewJsonColumn(Column):
 
             read_binary_bytes_fixed_len(buf, 8)
 
-        # Read values.
+    def _read_values(self, buf, paths, n_items):
+        """
+        Read values.
+        """
         for path in paths.values():
             specs = []
-
             # Read value positions in the record list.
             for i in range(n_items):
                 spec_number = read_binary_uint8(buf)
@@ -88,8 +103,6 @@ class NewJsonColumn(Column):
                     path[spec]["values"] += reader.read_items(1, buf)
 
         read_binary_bytes_fixed_len(buf, 8 * n_items)
-
-        return self._fold_json(n_items, paths)
 
     def write_items(self, items, buf, depth=0):
         # Convert all items to dictionaries.
