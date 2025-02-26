@@ -150,6 +150,9 @@ class NewJsonColumn(Column):
         buf.write(b"\x00" * rows * 8)
 
     def _write_tuple_header(self, col, spec, depth, buf):
+        """
+        Write header for JSON objects inside a tuple.
+        """
         for i, subspec in enumerate(spec[6:-2].split("), ")):
             if subspec.startswith("JSON"):
                 self.write_state_prefix(buf)
@@ -159,6 +162,9 @@ class NewJsonColumn(Column):
                 self._write_specs(paths, buf, depth=depth)
 
     def _write_tuple_values(self, col, spec, depth, buf):
+        """
+        Write values in a tuple.
+        """
         for i, subspec in enumerate(spec[6:-2].split("), ")):
             if not subspec.startswith("Array") and not subspec.startswith("Tuple") and not subspec.startswith("JSON"):
                 buf.write(b"\x00" * len(col[spec]["values"]))
