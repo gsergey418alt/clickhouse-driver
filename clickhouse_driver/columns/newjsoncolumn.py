@@ -91,11 +91,11 @@ class NewJsonColumn(Column):
 
         return self._fold_json(n_items, paths)
 
-    def write_items(self, items, buf):
+    def write_items(self, items, buf, depth=0):
         # Convert all items to dictionaries.
         items = [x if not isinstance(x, str) else json.loads(x) for x in items]
 
-        paths = self._unfold_json(items)
+        paths = self._unfold_json(items, depth)
 
         self._write_paths(paths, buf)
         self._write_specs(paths, buf)
@@ -109,25 +109,26 @@ class NewJsonColumn(Column):
         write_binary_uint8(len(paths), buf)
         self.string_column.write_items(paths.keys(), buf)
 
-    def _write_specs(self, paths, buf):
+    def _write_specs(self, paths, buf, depth=0):
         """
         Write values specs.
         """
-        for writer in list(paths.values()):
+        for col in paths.values():
             buf.write(b"\x02" + b"\x00" * 7)
-            write_binary_uint8(len(writer), buf)
-            self.string_column.write_items(writer.keys(), buf)
+            write_binary_uint8(len(col), buf)
+            self.string_column.write_items(col.keys(), buf)
             buf.write(b"\x00" * 8)
 
-    def _write_values(self, paths, rows, buf):
+        for col in paths.values():
+            for spec in col:
+                if spec.startswith("Tuple") and "JSON" in spec:
+                    self._write_tuple_header(col, spec, depth+1, buf)
+
+    def _write_values(self, paths, rows, buf, depth=0):
         """
         Write values.
         """
         for col in paths.values():
-            for spec in col.keys():
-                if spec.startswith("Tuple"):
-                    writer = self.column_by_spec_getter(spec)
-                    writer.write_state_prefix(buf)
             buf.write(self._get_row_posititons(col, rows))
             for spec in col:
                 if spec.startswith("Array"):
@@ -136,8 +137,11 @@ class NewJsonColumn(Column):
                     writer = self.column_by_spec_getter(spec)
                     writer.write_data(insert, buf)
                 elif spec.startswith("Tuple"):
-                    writer = self.column_by_spec_getter(spec)
-                    writer.write_items(col[spec]["values"], buf)
+                    if "JSON" in spec:
+                        self._write_tuple_values(col, spec, depth+1, buf)
+                    else:
+                        writer = self.column_by_spec_getter(spec)
+                        writer.write_items(col[spec]["values"], buf)
                 else:
                     writer = self.column_by_spec_getter(spec)
                     writer.write_items(col[spec]["values"], buf)
@@ -145,7 +149,40 @@ class NewJsonColumn(Column):
         # Write final padding.
         buf.write(b"\x00" * rows * 8)
 
-    def _get_json_value_spec(self, item):
+    def _write_tuple_header(self, col, spec, depth, buf):
+        for subspec, val in zip(spec[6:-2].split("), "), col[spec]["values"][0]):
+            if subspec.startswith("JSON"):
+                self.write_state_prefix(buf)
+                paths = self._unfold_json([val], depth=depth)
+                self._write_paths(paths, buf)
+                self._write_specs(paths, buf, depth=depth)
+
+    def _write_tuple_values(self, col, spec, depth, buf):
+        for i, subspec in enumerate(spec[6:-2].split("), ")):
+            if not subspec.startswith("Array") and not subspec.startswith("Tuple") and not subspec.startswith("JSON"):
+                buf.write(b"\x00" * len(col[spec]["values"]))
+            for row in col[spec]["values"]:
+                if subspec.startswith("JSON"):
+                    items = [item[i] for item in col[spec]["values"]]
+                    paths = self._unfold_json(items, depth)
+                    self._write_values(paths, len(items), buf, depth)
+                    break
+                elif subspec.startswith("Array"):
+                    insert = self._preprocess_array(
+                        [row[i]], subspec[6:])
+                    writer = self.column_by_spec_getter(
+                        subspec + ")")
+                    writer.write_data(insert, buf)
+                elif subspec.startswith("Tuple"):
+                    writer = self.column_by_spec_getter(
+                        subspec[6:])
+                    writer.write_data([row[i]], buf)
+                else:
+                    writer = self.column_by_spec_getter(
+                        subspec[9:])
+                    writer.write_data([row[i]], buf)
+
+    def _get_json_value_spec(self, item, depth):
         """
         Returns a ClickHouse spec for a JSON data type.
         """
@@ -158,7 +195,7 @@ class NewJsonColumn(Column):
         elif isinstance(item, bool):
             return "Bool"
         elif isinstance(item, dict):
-            return "JSON(max_dynamic_types=16, max_dynamic_paths=256)"
+            return f"JSON(max_dynamic_types={int(2 ** (4 - depth))}, max_dynamic_paths={int(4 ** (4 - depth))})"
         elif isinstance(item, list):
             value_types = []
             for entry in item:
@@ -170,8 +207,8 @@ class NewJsonColumn(Column):
                     item.remove(None)
                 result = "Tuple("
                 for entry in item:
-                    spec = self._get_json_value_spec(entry)
-                    if not spec.startswith("Array") and not spec.startswith("JSON"):
+                    spec = self._get_json_value_spec(entry, depth)
+                    if not spec.startswith("Array") and not spec.startswith("Tuple") and not spec.startswith("JSON"):
                         result += f"Nullable({spec}), "
                     else:
                         result += f"{spec}, "
@@ -221,7 +258,7 @@ class NewJsonColumn(Column):
         else:
             return {"": obj}
 
-    def _unfold_json_item(self, obj, result={}, row_count=0):
+    def _unfold_json_item(self, obj, depth, result={}, row_count=0):
         """
         Converts a single record into an intermeditary format stored in result.
         """
@@ -231,7 +268,7 @@ class NewJsonColumn(Column):
                 for obj_k in obj_res:
                     if f"{k}.{obj_k}" not in result:
                         result[f"{k}.{obj_k}"] = {}
-                    spec = self._get_json_value_spec(obj_res[obj_k])
+                    spec = self._get_json_value_spec(obj_res[obj_k], depth)
                     if spec not in result[f"{k}.{obj_k}"]:
                         result[f"{k}.{obj_k}"][spec] = {
                             "values": [], "positions": []}
@@ -240,13 +277,13 @@ class NewJsonColumn(Column):
                     result[f"{k}.{obj_k}"][spec]["positions"].append(row_count)
         return result
 
-    def _unfold_json(self, items):
+    def _unfold_json(self, items, depth):
         """
         Converts the passed dictionary into an intermediary format.
         """
         result = {}
         for row, obj in enumerate(items):
-            result = self._unfold_json_item(obj, result, row)
+            result = self._unfold_json_item(obj, depth, result, row)
         for k in list(result.keys()):
             result[k[:-1]] = dict(sorted(result[k].items()))
             del result[k]
