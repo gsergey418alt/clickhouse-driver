@@ -81,107 +81,24 @@ class NewJSONTestCase(BaseTestCase):
                 '{"nested":{"double-nested":{"floats":[0.1,0.2,4],"foo":"bar","no":{"escaping":"1337"},"numbers":["1","2","3"],"triple-nested":{"foo":"bar"}},"number":"4141","string":"Hello, World!"}}\n'
             )
             inserted = self.client.execute(query)
-            data_with_all_keys = [
-                ({},),
-                (
-                    {
-                        "bar": "baz",
-                        "foo": "bar"
-                    },),
-                (
-                    {
-                        "baz": "qux",
-                        "foo": 4919
-                    },),
-                (
-                    {
-                        "qux": "quux"
-                    },),
-                (
-                    {
-                        "foo": "AAAA"
-                    },),
-                (
-                    {
-                        "qux": 14099
-                    },),
-                (
-                    {
-                        "foo": (
-                            "1",
-                            "0.2",
-                            "bar",
-                            "baz",
-                            "false"
-                        )
-                    },),
-                (
-                    {
-                        "foo": 0.1337
-                    },),
-                (
-                    {
-                        "foo": False
-                    },),
-                (
-                    {
-                        "bar": 1337
-                    },),
-                (
-                    {
-                        "bar": 0.999
-                    },),
-                (
-                    {
-                        "quux": 1000
-                    },),
-                (
-                    {
-                        "quux": 2000
-                    },),
-                (
-                    {
-                        "alice": 0.432
-                    },),
-                (
-                    {
-                        "bob": 0.991
-                    },),
-                (
-                    {
-                        "boolean": True
-                    },),
-                (
-                    {
-                        "string": "A quick brown fox jumps over the lazy dog."
-                    },),
-                (
-                    {
-                        "nested": {
-                            "double-nested": {
-                                "floats": (
-                                    0.1,
-                                    0.2,
-                                    4.0
-                                ),
-                                "foo": "bar",
-                                "no": {
-                                    "escaping": "1337"
-                                },
-                                "numbers": (
-                                    1,
-                                    2,
-                                    3
-                                ),
-                                "triple-nested": {
-                                    "foo": "bar"
-                                }
-                            },
-                            "number": 4141,
-                            "string": "Hello, World!"
-                        }
-                    },)
-            ]
+            data_with_all_keys = [({},),
+             ({'bar': 'baz', 'foo': 'bar'},),
+             ({'baz': 'qux', 'foo': 4919},),
+             ({'qux': 'quux'},),
+             ({'foo': 'AAAA'},),
+             ({'qux': 14099},),
+             ({'foo': ['1', '0.2', 'bar', 'baz', 'false']},),
+             ({'foo': 0.1337},),
+             ({'foo': False},),
+             ({'bar': 1337},),
+             ({'bar': 0.999},),
+             ({'quux': 1000},),
+             ({'quux': 2000},),
+             ({'alice': 0.432},),
+             ({'bob': 0.991},),
+             ({'boolean': True},),
+             ({'string': 'A quick brown fox jumps over the lazy dog.'},),
+             ({'nested': {'double-nested': {'floats': [0.1, 0.2, 4.0], 'foo': 'bar', 'no': {'escaping': '1337'}, 'numbers': [1, 2, 3], 'triple-nested': {'foo': 'bar'}}, 'number': 4141, 'string': 'Hello, World!'}},)]
             self.assertEqual(inserted, data_with_all_keys)
 
     def test_insert_json_strings(self):
