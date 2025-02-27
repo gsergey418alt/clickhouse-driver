@@ -130,7 +130,7 @@ class NewJsonColumn(Column):
                     paths = col[spec]["tuple_header"][i]
                     self._read_values(buf, paths, len(col[spec]["positions"]))
                     result = self._fold_json(len(col[spec]["positions"]), paths)
-                    for pos, item in zip(col[spec]["positions"], result):
+                    for pos, item in enumerate(result):
                         col[spec]["values"][pos].append(item)
                     break
                 elif subspec.startswith("Array"):
