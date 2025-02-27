@@ -110,7 +110,7 @@ class NewJsonColumn(Column):
                         self._read_tuple_values(buf, col, spec)
                     else:
                         reader = self.column_by_spec_getter(spec)
-                        col[spec]["values"] += reader.read_items(1, buf)
+                        col[spec]["values"] += reader.read_items(len(col[spec]["positions"]), buf)
                 else:
                     reader = self.column_by_spec_getter(spec)
                     col[spec]["values"] += reader.read_items(1, buf)
