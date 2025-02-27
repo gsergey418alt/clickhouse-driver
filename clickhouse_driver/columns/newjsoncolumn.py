@@ -108,7 +108,6 @@ class NewJsonColumn(Column):
                 elif spec.startswith("Tuple"):
                     if "JSON" in spec:
                         self._read_tuple_values(buf, col, spec)
-                        pass
                     else:
                         reader = self.column_by_spec_getter(spec)
                         col[spec]["values"] += reader.read_items(1, buf)
@@ -122,7 +121,7 @@ class NewJsonColumn(Column):
         """
         Read values in a tuple with nested JSON elements.
         """
-        col[spec]["values"] = [[]] * len(col[spec]["positions"])
+        col[spec]["values"] = [[] for _ in range(len(col[spec]["positions"]))]
         for i, subspec in enumerate(spec[6:-2].split("), ")):
             if not subspec.startswith("Array") and not subspec.startswith("Tuple") and not subspec.startswith("JSON"):
                 buf.read(len(col[spec]["positions"]))
@@ -130,7 +129,10 @@ class NewJsonColumn(Column):
                 if subspec.startswith("JSON"):
                     paths = col[spec]["tuple_header"][i]
                     self._read_values(buf, paths, len(col[spec]["positions"]))
-                    row += self._fold_json(1, paths)[0]
+                    result = self._fold_json(len(col[spec]["positions"]), paths)
+                    for pos, item in zip(col[spec]["positions"], result):
+                        col[spec]["values"][pos].append(item)
+                    break
                 elif subspec.startswith("Array"):
                     reader = self.column_by_spec_getter(
                         subspec + ")")
@@ -155,7 +157,7 @@ class NewJsonColumn(Column):
                 if spec_number > len(col) - 1 and len([spec for spec in col.values() if [v for v in spec if v.startswith("String") or v.startswith("Tuple")]]) == 0:
                     spec_number -= 1
                 spec = list(col.keys())[spec_number]
-                if not spec.startswith("Array") or spec not in specs:
+                if not (spec.startswith("Array") or spec.startswith("Tuple")) or spec not in specs:
                     specs.append(spec)
                 col[spec]["positions"].append(i)
 
