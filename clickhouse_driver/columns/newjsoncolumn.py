@@ -46,7 +46,7 @@ class NewJsonColumn(Column):
         Read value specs.
         """
         read_binary_uint8(buf)
-        for path in paths.values():
+        for col in paths.values():
             read_binary_bytes_fixed_len(buf, 8)
 
             # ClickHouse client repeats the spec count bytes twice if
@@ -57,27 +57,26 @@ class NewJsonColumn(Column):
             if chr(next_next_byte).isalnum():
                 spec = chr(next_next_byte) + \
                     read_binary_str_fixed_len(buf, next_byte - 1)
-                path[spec] = {
+                col[spec] = {
                     "values": [], "positions": []}
             else:
                 if spec_count != next_byte:
                     raise Exception(
                         f"Parsing error: spec length verficiation byte invalid: {spec_count} != {next_byte}.")
                 spec = read_binary_str_fixed_len(buf, next_next_byte)
-                path[spec] = {
+                col[spec] = {
                     "values": [], "positions": []}
 
             for i in range(1, spec_count):
                 spec = read_binary_str(buf)
-                path[spec] = {
+                col[spec] = {
                     "values": [], "positions": []}
 
             read_binary_bytes_fixed_len(buf, 8)
 
-            for col in paths:
-                for spec in paths[col]:
-                    if spec.startswith("Tuple") and "JSON" in spec:
-                        self._read_tuple_header(buf, paths[col], spec)
+            for spec in col:
+                if spec.startswith("Tuple") and "JSON" in spec:
+                    self._read_tuple_header(buf, col, spec)
 
     def _read_tuple_header(self, buf, col, spec):
         """
@@ -110,7 +109,8 @@ class NewJsonColumn(Column):
                         self._read_tuple_values(buf, col, spec)
                     else:
                         reader = self.column_by_spec_getter(spec)
-                        col[spec]["values"] += reader.read_items(len(col[spec]["positions"]), buf)
+                        col[spec]["values"] += reader.read_items(
+                            len(col[spec]["positions"]), buf)
                 else:
                     reader = self.column_by_spec_getter(spec)
                     col[spec]["values"] += reader.read_items(1, buf)
@@ -129,7 +129,8 @@ class NewJsonColumn(Column):
                 if subspec.startswith("JSON"):
                     paths = col[spec]["tuple_header"][i]
                     self._read_values(buf, paths, len(col[spec]["positions"]))
-                    result = self._fold_json(len(col[spec]["positions"]), paths)
+                    result = self._fold_json(
+                        len(col[spec]["positions"]), paths)
                     for pos, item in enumerate(result):
                         col[spec]["values"][pos].append(item)
                     break
@@ -151,7 +152,8 @@ class NewJsonColumn(Column):
         Read value positions in the record list.
         """
         specs = []
-        skip = len(col) - len([v for v in col if v.startswith("String") or v.startswith("Tuple")])
+        skip = len(
+            col) - len([v for v in col if v.startswith("String") or v.startswith("Tuple")])
         for i in range(n_items):
             spec_number = read_binary_uint8(buf)
             if spec_number < 255:
@@ -191,8 +193,6 @@ class NewJsonColumn(Column):
             write_binary_uint8(len(col), buf)
             self.string_column.write_items(col.keys(), buf)
             buf.write(b"\x00" * 8)
-
-        for col in paths.values():
             for spec in col:
                 if spec.startswith("Tuple") and "JSON" in spec:
                     self._write_tuple_header(col, spec, depth+1, buf)
@@ -315,7 +315,8 @@ class NewJsonColumn(Column):
         """
         result = [255] * row_count
         count = 0
-        skip = len(col) - len([v for v in col.keys() if v.startswith("String") or v.startswith("Tuple")])
+        skip = len(col) - len([v for v in col.keys()
+                               if v.startswith("String") or v.startswith("Tuple")])
         for spec in col:
             if count == skip:
                 count += 1
