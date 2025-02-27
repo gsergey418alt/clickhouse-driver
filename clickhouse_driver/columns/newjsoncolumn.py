@@ -45,29 +45,21 @@ class NewJsonColumn(Column):
         """
         Read value specs.
         """
-        read_binary_uint8(buf)
         for col in paths.values():
             read_binary_bytes_fixed_len(buf, 8)
 
+            start = 0
             # ClickHouse client repeats the spec count bytes twice if
             # there are more than two different specs for a single column.
             spec_count = read_binary_uint8(buf)
             next_byte = read_binary_uint8(buf)
-            next_next_byte = read_binary_uint8(buf)
-            if chr(next_next_byte).isalnum():
-                spec = chr(next_next_byte) + \
-                    read_binary_str_fixed_len(buf, next_byte - 1)
+            if next_byte != spec_count:
+                spec = read_binary_str_fixed_len(buf, next_byte)
                 col[spec] = {
                     "values": [], "positions": []}
-            else:
-                if spec_count != next_byte:
-                    raise Exception(
-                        f"Parsing error: spec length verficiation byte invalid: {spec_count} != {next_byte}.")
-                spec = read_binary_str_fixed_len(buf, next_next_byte)
-                col[spec] = {
-                    "values": [], "positions": []}
+                start = 1
 
-            for i in range(1, spec_count):
+            for i in range(start, spec_count):
                 spec = read_binary_str(buf)
                 col[spec] = {
                     "values": [], "positions": []}
