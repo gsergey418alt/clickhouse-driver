@@ -275,8 +275,6 @@ class NewJsonColumn(Column):
                 if t not in value_types:
                     value_types.append(t)
             if dict in value_types or list in value_types:
-                while None in item:
-                    item.remove(None)
                 result = "Tuple("
                 for entry in item:
                     spec = self._get_json_value_spec(entry, depth)
@@ -300,6 +298,8 @@ class NewJsonColumn(Column):
                     return "Array(Nullable(Bool))"
                 else:
                     return "Array(Nullable(String))"
+        elif item is None:
+            return "String"
 
     def _get_row_posititons(self, col, row_count):
         """
@@ -408,7 +408,7 @@ class NewJsonColumn(Column):
                     elif isinstance(elem, bool):
                         arr.append(str(elem).lower())
                     elif elem is None:
-                        arr.append("null")
+                        arr.append(None)
                     else:
                         arr.append(str(elem))
                 insert.append(arr)
