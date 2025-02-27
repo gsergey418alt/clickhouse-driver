@@ -130,19 +130,19 @@ class NewJsonColumn(Column):
                 if subspec.startswith("JSON"):
                     paths = col[spec]["tuple_header"][i]
                     self._read_values(buf, paths, len(col[spec]["positions"]))
-                    row.append(self._fold_json(1, paths)[0])
+                    row += self._fold_json(1, paths)[0]
                 elif subspec.startswith("Array"):
                     reader = self.column_by_spec_getter(
                         subspec + ")")
-                    row.append(reader.read_data(1, buf))
+                    row += reader.read_data(1, buf)
                 elif subspec.startswith("Tuple"):
                     reader = self.column_by_spec_getter(
                         subspec[6:])
-                    row.append(reader.read_data(1, buf))
+                    row += reader.read_data(1, buf)
                 else:
                     reader = self.column_by_spec_getter(
                         subspec[9:])
-                    row.append(reader.read_data(1, buf))
+                    row += reader.read_data(1, buf)
 
     def _read_row_positions(self, buf, col, n_items):
         """
