@@ -78,18 +78,19 @@ class NewJsonColumn(Column):
                 for spec in paths[col]:
                     if spec.startswith("Tuple") and "JSON" in spec:
                         self._read_tuple_header(buf, paths[col], spec)
-    
+
     def _read_tuple_header(self, buf, col, spec):
         """
         Read header for JSON objects inside a tuple.
         """
+        col[spec]["tuple_header"] = []
         for i, subspec in enumerate(spec[6:-2].split("), ")):
             if subspec.startswith("JSON"):
                 paths = self._read_paths(buf)
                 self._read_specs(buf, paths)
-                col[spec]["values"].append(paths)
+                col[spec]["tuple_header"].append(paths)
             else:
-                col[spec]["values"].append(None)
+                col[spec]["tuple_header"].append(None)
 
     def _read_values(self, buf, paths, n_items):
         """
@@ -121,24 +122,27 @@ class NewJsonColumn(Column):
         """
         Read values in a tuple with nested JSON elements.
         """
+        col[spec]["values"] = [[]] * len(col[spec]["positions"])
         for i, subspec in enumerate(spec[6:-2].split("), ")):
             if not subspec.startswith("Array") and not subspec.startswith("Tuple") and not subspec.startswith("JSON"):
-                buf.read(len(col[spec]["values"]))
+                buf.read(len(col[spec]["positions"]))
             for row in col[spec]["values"]:
                 if subspec.startswith("JSON"):
-                    pass
+                    paths = col[spec]["tuple_header"][i]
+                    self._read_values(buf, paths, len(col[spec]["positions"]))
+                    row.append(self._fold_json(1, paths)[0])
                 elif subspec.startswith("Array"):
                     reader = self.column_by_spec_getter(
                         subspec + ")")
-                    row[i] = reader.read_data(1, buf)
+                    row.append(reader.read_data(1, buf))
                 elif subspec.startswith("Tuple"):
                     reader = self.column_by_spec_getter(
                         subspec[6:])
-                    row[i] = reader.read_data(1, buf)
+                    row.append(reader.read_data(1, buf))
                 else:
                     reader = self.column_by_spec_getter(
                         subspec[9:])
-                    row[i] = reader.read_data(1, buf)
+                    row.append(reader.read_data(1, buf))
 
     def _read_row_positions(self, buf, col, n_items):
         """
@@ -154,7 +158,7 @@ class NewJsonColumn(Column):
                 if not spec.startswith("Array") or spec not in specs:
                     specs.append(spec)
                 col[spec]["positions"].append(i)
-        
+
         return sorted(specs)
 
     def write_items(self, items, buf, depth=0):
