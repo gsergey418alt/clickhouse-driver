@@ -84,7 +84,7 @@ class NewJsonColumn(Column):
                 col[spec]["tuple_header"].append(paths)
             else:
                 col[spec]["tuple_header"].append(None)
-    
+
     def _read_complex_array_header(self, buf, col, spec):
         """
         Read header for JSON objects inside an array.
@@ -218,6 +218,8 @@ class NewJsonColumn(Column):
             for spec in col:
                 if spec.startswith("Tuple") and "JSON" in spec:
                     self._write_complex_tuple_header(col, spec, depth+1, buf)
+                elif spec.startswith("Array") and "JSON" in spec:
+                    self._write_complex_array_header(col, spec, depth+1, buf)
 
     def _write_values(self, paths, rows, buf, depth=0):
         """
@@ -227,13 +229,17 @@ class NewJsonColumn(Column):
             buf.write(self._get_row_posititons(col, rows))
             for spec in col:
                 if spec.startswith("Array"):
-                    insert = self._preprocess_array(
-                        col[spec]["values"], spec[6:-1])
-                    writer = self.column_by_spec_getter(spec)
-                    writer.write_data(insert, buf)
+                    if "JSON" in spec:
+                        self._write_complex_array_values(col, spec, depth+1, buf)
+                    else:
+                        insert = self._preprocess_array(
+                            col[spec]["values"], spec[6:-1])
+                        writer = self.column_by_spec_getter(spec)
+                        writer.write_data(insert, buf)
                 elif spec.startswith("Tuple"):
                     if "JSON" in spec:
-                        self._write_complex_tuple_values(col, spec, depth+1, buf)
+                        self._write_complex_tuple_values(
+                            col, spec, depth+1, buf)
                     else:
                         writer = self.column_by_spec_getter(spec)
                         writer.write_items(col[spec]["values"], buf)
@@ -256,6 +262,18 @@ class NewJsonColumn(Column):
                 self._write_paths(paths, buf)
                 self._write_specs(paths, buf, depth=depth)
 
+    def _write_complex_array_header(self, col, spec, depth, buf):
+        """
+        Write header for JSON objects inside an array.
+        """
+        self.write_state_prefix(buf)
+        items = []
+        for item in col[spec]["values"]:
+            items += item
+        paths = self._unfold_json(items, depth=depth)
+        self._write_paths(paths, buf)
+        self._write_specs(paths, buf, depth=depth)
+
     def _write_complex_tuple_values(self, col, spec, depth, buf):
         """
         Write values in a tuple with nested JSON elements.
@@ -266,8 +284,8 @@ class NewJsonColumn(Column):
             for row in col[spec]["values"]:
                 if subspec.startswith("JSON"):
                     items = [item[i] for item in col[spec]["values"]]
-                    paths = self._unfold_json(items, depth)
-                    self._write_values(paths, len(items), buf, depth)
+                    paths = self._unfold_json(items, depth=depth)
+                    self._write_values(paths, len(items), buf, depth=depth)
                     break
                 elif subspec.startswith("Array"):
                     insert = self._preprocess_array(
@@ -283,6 +301,20 @@ class NewJsonColumn(Column):
                     writer = self.column_by_spec_getter(
                         subspec[9:])
                     writer.write_data([row[i]], buf)
+
+    def _write_complex_array_values(self, col, spec, depth, buf):
+        """
+        Write values in an array with nested JSON elements.
+        """
+        bound = 0
+        for v in col[spec]["values"]:
+            bound = bound + len(v)
+            write_binary_uint64(bound, buf)
+        items = []
+        for item in col[spec]["values"]:
+            items += item
+        paths = self._unfold_json(items, depth=depth)
+        self._write_values(paths, len(items), buf, depth=depth)
 
     def _get_json_value_spec(self, item, depth):
         """
@@ -305,6 +337,8 @@ class NewJsonColumn(Column):
                 if t not in value_types:
                     value_types.append(t)
             if dict in value_types or list in value_types:
+                if len(value_types) == 1 and value_types[0] is dict:
+                    return f"Array({self._get_json_value_spec(item[0], depth=depth)})"
                 result = "Tuple("
                 for entry in item:
                     spec = self._get_json_value_spec(entry, depth)
