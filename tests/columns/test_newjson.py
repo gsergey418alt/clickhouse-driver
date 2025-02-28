@@ -865,8 +865,8 @@ class NewJSONTestCase(BaseTestCase):
 
             query = "SELECT * FROM test"
             expected_result = [
-                ({"fdsa": (["foo", "bar"], ["bar", "baz"])},),
-                ({"fdsa": (["baz", "qux"], ["qux", "quux"])},),
+                ({"fdsa": [["foo", "bar"], ["bar", "baz"]]},),
+                ({"fdsa": [["baz", "qux"], ["qux", "quux"]]},),
             ]
             result = self.client.execute(query)
             self.assertEqual(result, expected_result)
