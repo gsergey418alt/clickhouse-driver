@@ -230,7 +230,8 @@ class NewJsonColumn(Column):
             for spec in col:
                 if spec.startswith("Array"):
                     if "JSON" in spec:
-                        self._write_complex_array_values(col, spec, depth+1, buf)
+                        self._write_complex_array_values(
+                            col, spec, depth+1, buf)
                     else:
                         insert = self._preprocess_array(
                             col[spec]["values"], spec[6:-1])
@@ -337,15 +338,20 @@ class NewJsonColumn(Column):
                 if t not in value_types:
                     value_types.append(t)
             if dict in value_types or list in value_types:
-                if len(value_types) == 1 and value_types[0] is dict:
-                    return f"Array({self._get_json_value_spec(item[0], depth=depth)})"
                 result = "Tuple("
+                unique_specs = []
                 for entry in item:
                     spec = self._get_json_value_spec(entry, depth)
                     if not spec.startswith("Array") and not spec.startswith("Tuple") and not spec.startswith("JSON"):
                         result += f"Nullable({spec}), "
                     else:
                         result += f"{spec}, "
+                    if spec not in unique_specs:
+                        unique_specs.append(spec)
+
+                # Return an array if all specs are the same
+                if len(unique_specs) == 1:
+                    return f"Array({self._get_json_value_spec(item[0], depth=depth)})"
                 result = result[:-2] + ")"
                 return result
             else:
@@ -463,6 +469,11 @@ class NewJsonColumn(Column):
         Preprocesses array values for insert.
         """
         insert = []
+        if array_type.startswith("Array"):
+            for item in values:
+                insert.append(self._preprocess_array(item, array_type[6:-1]))
+            return insert
+        
         if "String" in array_type:
             for item in values:
                 arr = []
