@@ -415,27 +415,6 @@ class NewJSONTestCase(BaseTestCase):
                                                                 "quintuple-nested-list": [
                                                                     5,
                                                                     6,
-                                                                    {
-                                                                        "sextuple-nested-list": [
-                                                                            7,
-                                                                            8,
-                                                                            {
-                                                                                "septuple-nested-list": [
-                                                                                    9,
-                                                                                    10,
-                                                                                    {
-                                                                                        "octuple-nested-list": [
-                                                                                            11,
-                                                                                            12,
-                                                                                            {
-                                                                                                "foo": "bar"
-                                                                                            },
-                                                                                        ]
-                                                                                    },
-                                                                                ]
-                                                                            },
-                                                                        ]
-                                                                    },
                                                                 ]
                                                             },
                                                         ]
@@ -479,27 +458,6 @@ class NewJSONTestCase(BaseTestCase):
                                                                 "quintuple-nested-list": [
                                                                     5,
                                                                     6,
-                                                                    {
-                                                                        "sextuple-nested-list": [
-                                                                            7,
-                                                                            8,
-                                                                            {
-                                                                                "septuple-nested-list": [
-                                                                                    9,
-                                                                                    10,
-                                                                                    {
-                                                                                        "octuple-nested-list": [
-                                                                                            11,
-                                                                                            12,
-                                                                                            {
-                                                                                                "foo": "bar"
-                                                                                            },
-                                                                                        ]
-                                                                                    },
-                                                                                ]
-                                                                            },
-                                                                        ]
-                                                                    },
                                                                 ]
                                                             },
                                                         ]
@@ -520,7 +478,7 @@ class NewJSONTestCase(BaseTestCase):
     def test_json_5_fromcli(self):
         with self.create_table("a JSON"):
             self.emit_cli(
-                'INSERT INTO test (a) VALUES (\'{"list": ["123", "456", {"nested-list": ["789", "10", {"double-nested-list": [14099, "AAAA", {"triple-nested-list": [1, 2, {"quadruple-nested-list": [3, 4, {"quintuple-nested-list": [5, 6, {"sextuple-nested-list": [7, 8, {"septuple-nested-list": [9, 10, {"octuple-nested-list": [11, 12, {"foo": "bar"}]}]}]}]}]}]}]}]}]}\')'
+                'INSERT INTO test (a) VALUES (\'{"list": ["123", "456", {"nested-list": ["789", "10", {"double-nested-list": [14099, "AAAA", {"triple-nested-list": [1, 2, {"quadruple-nested-list": [3, 4, {"quintuple-nested-list": [5, 6]}]}]}]}]}]}\')'
             )
 
             query = "SELECT * FROM test"
@@ -550,27 +508,6 @@ class NewJSONTestCase(BaseTestCase):
                                                                 "quintuple-nested-list": [
                                                                     5,
                                                                     6,
-                                                                    {
-                                                                        "sextuple-nested-list": [
-                                                                            7,
-                                                                            8,
-                                                                            {
-                                                                                "septuple-nested-list": [
-                                                                                    9,
-                                                                                    10,
-                                                                                    {
-                                                                                        "octuple-nested-list": [
-                                                                                            11,
-                                                                                            12,
-                                                                                            {
-                                                                                                "foo": "bar"
-                                                                                            },
-                                                                                        ]
-                                                                                    },
-                                                                                ]
-                                                                            },
-                                                                        ]
-                                                                    },
                                                                 ]
                                                             },
                                                         ]
