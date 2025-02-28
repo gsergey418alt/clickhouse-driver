@@ -68,9 +68,11 @@ class NewJsonColumn(Column):
 
             for spec in col:
                 if spec.startswith("Tuple") and "JSON" in spec:
-                    self._read_tuple_header(buf, col, spec)
+                    self._read_complex_tuple_header(buf, col, spec)
+                elif spec.startswith("Array") and "JSON" in spec:
+                    self._read_complex_array_header(buf, col, spec)
 
-    def _read_tuple_header(self, buf, col, spec):
+    def _read_complex_tuple_header(self, buf, col, spec):
         """
         Read header for JSON objects inside a tuple.
         """
@@ -82,6 +84,14 @@ class NewJsonColumn(Column):
                 col[spec]["tuple_header"].append(paths)
             else:
                 col[spec]["tuple_header"].append(None)
+    
+    def _read_complex_array_header(self, buf, col, spec):
+        """
+        Read header for JSON objects inside an array.
+        """
+        paths = self._read_paths(buf)
+        self._read_specs(buf, paths)
+        col[spec]["array_header"] = paths
 
     def _read_values(self, buf, paths, n_items):
         """
@@ -93,12 +103,15 @@ class NewJsonColumn(Column):
             # Read values of that column.
             for spec in specs:
                 if spec.startswith("Array"):
-                    reader = self.column_by_spec_getter(spec)
-                    col[spec]["values"] = reader.read_data(
-                        len(col[spec]["positions"]), buf)
+                    if "JSON" in spec:
+                        self._read_complex_array_values(buf, col, spec)
+                    else:
+                        reader = self.column_by_spec_getter(spec)
+                        col[spec]["values"] = reader.read_data(
+                            len(col[spec]["positions"]), buf)
                 elif spec.startswith("Tuple"):
                     if "JSON" in spec:
-                        self._read_tuple_values(buf, col, spec)
+                        self._read_complex_tuple_values(buf, col, spec)
                     else:
                         reader = self.column_by_spec_getter(spec)
                         col[spec]["values"] += reader.read_items(
@@ -109,7 +122,7 @@ class NewJsonColumn(Column):
 
         read_binary_bytes_fixed_len(buf, 8 * n_items)
 
-    def _read_tuple_values(self, buf, col, spec):
+    def _read_complex_tuple_values(self, buf, col, spec):
         """
         Read values in a tuple with nested JSON elements.
         """
@@ -138,6 +151,23 @@ class NewJsonColumn(Column):
                     reader = self.column_by_spec_getter(
                         subspec[9:])
                     row += reader.read_data(1, buf)
+
+    def _read_complex_array_values(self, buf, col, spec):
+        """
+        Read values in an array with nested JSON elements.
+        """
+        bounds = []
+        for i in range(len(col[spec]["positions"])):
+            bounds.append(read_binary_uint64(buf))
+        paths = col[spec]["array_header"]
+        self._read_values(buf, paths, bounds[-1])
+        result = self._fold_json(
+            bounds[-1], paths)
+        prev_bound = 0
+        for i, bound in enumerate(bounds):
+            col[spec]["values"].append(result[prev_bound:bound])
+            col[spec]["positions"].append(i)
+            prev_bound = bound
 
     def _read_row_positions(self, buf, col, n_items):
         """
@@ -187,7 +217,7 @@ class NewJsonColumn(Column):
             buf.write(b"\x00" * 8)
             for spec in col:
                 if spec.startswith("Tuple") and "JSON" in spec:
-                    self._write_tuple_header(col, spec, depth+1, buf)
+                    self._write_complex_tuple_header(col, spec, depth+1, buf)
 
     def _write_values(self, paths, rows, buf, depth=0):
         """
@@ -203,7 +233,7 @@ class NewJsonColumn(Column):
                     writer.write_data(insert, buf)
                 elif spec.startswith("Tuple"):
                     if "JSON" in spec:
-                        self._write_tuple_values(col, spec, depth+1, buf)
+                        self._write_complex_tuple_values(col, spec, depth+1, buf)
                     else:
                         writer = self.column_by_spec_getter(spec)
                         writer.write_items(col[spec]["values"], buf)
@@ -214,7 +244,7 @@ class NewJsonColumn(Column):
         # Write final padding.
         buf.write(b"\x00" * rows * 8)
 
-    def _write_tuple_header(self, col, spec, depth, buf):
+    def _write_complex_tuple_header(self, col, spec, depth, buf):
         """
         Write header for JSON objects inside a tuple.
         """
@@ -226,7 +256,7 @@ class NewJsonColumn(Column):
                 self._write_paths(paths, buf)
                 self._write_specs(paths, buf, depth=depth)
 
-    def _write_tuple_values(self, col, spec, depth, buf):
+    def _write_complex_tuple_values(self, col, spec, depth, buf):
         """
         Write values in a tuple with nested JSON elements.
         """
