@@ -35,9 +35,13 @@ class NewJsonColumn(Column):
         read_binary_bytes_fixed_len(buf, 9)
 
         paths_count = read_binary_uint8(buf)
+        if paths_count == 0:
+            return
         paths = {}
         for i in range(paths_count):
-            paths[read_binary_str(buf)] = {}
+            strlen = read_binary_uint8(buf)
+            col = read_binary_str_fixed_len(buf, strlen)
+            paths[col] = {}
 
         return paths
 
@@ -80,6 +84,9 @@ class NewJsonColumn(Column):
         for i, subspec in enumerate(spec[6:-2].split("), ")):
             if subspec.startswith("JSON"):
                 paths = self._read_paths(buf)
+                if paths is None:
+                    col[spec]["tuple_header"] += [None for _ in range(len(spec[6:-2].split("), ")) - i)]
+                    return
                 self._read_specs(buf, paths)
                 col[spec]["tuple_header"].append(paths)
             else:
@@ -133,6 +140,11 @@ class NewJsonColumn(Column):
             for row in col[spec]["values"]:
                 if subspec.startswith("JSON"):
                     paths = col[spec]["tuple_header"][i]
+                    if paths is None:
+                        # Read simplified nested JSON with max_dynamic_types = 0 and max_dynamic_paths = 0.
+                        simp_paths = self._read_simplified_paths(buf)
+                        self._read_simplified_values(buf, simp_paths)
+                        break
                     self._read_values(buf, paths, len(col[spec]["positions"]))
                     result = self._fold_json(
                         len(col[spec]["positions"]), paths)
@@ -151,7 +163,30 @@ class NewJsonColumn(Column):
                     reader = self.column_by_spec_getter(
                         subspec[9:])
                     row += reader.read_data(1, buf)
+    
+    def _read_simplified_paths(self, buf):
+        """
+        Read json paths with max_dynamic_types = 0 and max_dynamic_paths = 0.
+        """
+        paths_count = read_binary_uint8(buf)
+        read_binary_bytes_fixed_len(buf, 7)
 
+        paths = {}
+        for i in range(paths_count):
+            strlen = read_binary_uint8(buf)
+            col = read_binary_str_fixed_len(buf, strlen)
+            paths[col] = {}
+        
+        return paths
+    
+    def _read_simplified_values(self, buf, paths):
+        """
+        Read json values with max_dynamic_types = 0 and max_dynamic_paths = 0.
+        """
+        for path in paths:
+            content_len = read_binary_uint8(buf)
+            read_binary_bytes_fixed_len(buf, content_len)
+    
     def _read_complex_array_values(self, buf, col, spec):
         """
         Read values in an array with nested JSON elements.
