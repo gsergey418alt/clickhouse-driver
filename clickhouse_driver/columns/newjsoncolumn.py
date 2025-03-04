@@ -142,8 +142,8 @@ class NewJsonColumn(Column):
                     paths = col[spec]["tuple_header"][i]
                     if paths is None:
                         # Read simplified nested JSON with max_dynamic_types = 0 and max_dynamic_paths = 0.
-                        simp_paths = self._read_simplified_paths(buf)
-                        self._read_simplified_values(buf, simp_paths)
+                        simp_paths = self._read_shared_paths(buf)
+                        self._read_shared_values(buf, simp_paths)
                         break
                     self._read_values(buf, paths, len(col[spec]["positions"]))
                     result = self._fold_json(
@@ -164,7 +164,8 @@ class NewJsonColumn(Column):
                         subspec[9:])
                     row += reader.read_data(1, buf)
     
-    def _read_simplified_paths(self, buf):
+    
+    def _read_shared_paths(self, buf):
         """
         Read json paths with max_dynamic_types = 0 and max_dynamic_paths = 0.
         """
@@ -179,13 +180,20 @@ class NewJsonColumn(Column):
         
         return paths
     
-    def _read_simplified_values(self, buf, paths):
+    def _read_shared_values(self, buf, paths):
         """
         Read json values with max_dynamic_types = 0 and max_dynamic_paths = 0.
         """
         for path in paths:
             content_len = read_binary_uint8(buf)
-            read_binary_bytes_fixed_len(buf, content_len)
+            paths[path] = self._unmarshal_shared_values(read_binary_bytes_fixed_len(buf, content_len))
+
+    def _unmarshal_shared_values(self, bin):
+        """
+        Unmarshal json values with max_dynamic_types = 0 and max_dynamic_paths = 0.
+        """
+        print("Warning: shared path JSON deserialization not implemented, skipping shared paths.")
+        return bin
     
     def _read_complex_array_values(self, buf, col, spec):
         """
