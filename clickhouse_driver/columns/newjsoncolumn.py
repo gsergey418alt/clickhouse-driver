@@ -23,6 +23,10 @@ class NewJsonColumn(Column):
 
     def read_items(self, n_items, buf):
         paths = self._read_paths(buf)
+        if paths is None:
+            shared_paths = self._read_shared_paths(buf)
+            self._read_shared_values(buf, shared_paths)
+            return []
         self._read_specs(buf, paths)
         self._read_values(buf, paths, n_items)
 
@@ -143,8 +147,8 @@ class NewJsonColumn(Column):
                     paths = col[spec]["tuple_header"][i]
                     if paths is None:
                         # Read simplified nested JSON with max_dynamic_types = 0 and max_dynamic_paths = 0.
-                        simp_paths = self._read_shared_paths(buf)
-                        self._read_shared_values(buf, simp_paths)
+                        shared_paths = self._read_shared_paths(buf)
+                        self._read_shared_values(buf, shared_paths)
                         break
                     self._read_values(buf, paths, len(col[spec]["positions"]))
                     result = self._fold_json(
