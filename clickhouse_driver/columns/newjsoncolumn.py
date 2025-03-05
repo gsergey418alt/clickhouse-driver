@@ -36,6 +36,7 @@ class NewJsonColumn(Column):
 
         paths_count = read_binary_uint8(buf)
         if paths_count == 0:
+            print("Warning: shared path JSON deserialization not implemented, skipping shared paths.")
             return
         paths = {}
         for i in range(paths_count):
@@ -192,7 +193,6 @@ class NewJsonColumn(Column):
         """
         Unmarshal json values with max_dynamic_types = 0 and max_dynamic_paths = 0.
         """
-        print("Warning: shared path JSON deserialization not implemented, skipping shared paths.")
         return bin
     
     def _read_complex_array_values(self, buf, col, spec):
